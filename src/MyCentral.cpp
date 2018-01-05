@@ -988,4 +988,170 @@ PVariable MyCentral::searchDevices(BaseLib::PRpcClientInfo clientInfo)
 	return Variable::createError(-32500, "Unknown application error.");
 }
 
+PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLib::PVariable metadata)
+{
+	PFileDescriptor serverSocketDescriptor;
+	try
+	{
+		serverSocketDescriptor = _bl->fileDescriptorManager.add(socket(AF_INET, SOCK_DGRAM, 0));
+		if(serverSocketDescriptor->descriptor == -1)
+		{
+			_bl->out.printError("Error: Could not create socket.");
+			return Variable::createError(-1, "Could not create socket.");
+		}
+
+		int32_t reuse = 1;
+		if(setsockopt(serverSocketDescriptor->descriptor, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) == -1)
+		{
+			_bl->out.printWarning("Warning: Could set socket options: " + std::string(strerror(errno)));
+		}
+
+        char loopch = 0;
+        if(setsockopt(serverSocketDescriptor->descriptor, IPPROTO_IP, IP_MULTICAST_LOOP, (char *)&loopch, sizeof(loopch)) == -1)
+        {
+            _bl->out.printWarning("Warning: Could set socket options: " + std::string(strerror(errno)));
+        }
+
+		struct in_addr localInterface;
+		localInterface.s_addr = inet_addr("0.0.0.0");
+		if(setsockopt(serverSocketDescriptor->descriptor, IPPROTO_IP, IP_MULTICAST_IF, (char *)&localInterface, sizeof(localInterface)) == -1)
+		{
+			_bl->out.printWarning("Warning: Could set socket options: " + std::string(strerror(errno)));
+		}
+
+		struct sockaddr_in localSock;
+		memset((char *) &localSock, 0, sizeof(localSock));
+		localSock.sin_family = AF_INET;
+		localSock.sin_port = 0;
+		localSock.sin_addr.s_addr = inet_addr("239.255.255.250");
+
+		if(bind(serverSocketDescriptor->descriptor, (struct sockaddr*)&localSock, sizeof(localSock)) == -1)
+		{
+			_bl->out.printError("Error: Binding failed: " + std::string(strerror(errno)));
+			_bl->fileDescriptorManager.close(serverSocketDescriptor);
+			return Variable::createError(-2, "Binding failed.");
+		}
+
+		struct sockaddr_in addessInfo;
+		addessInfo.sin_family = AF_INET;
+		addessInfo.sin_addr.s_addr = inet_addr("239.255.255.250");
+		addessInfo.sin_port = htons(43439);
+
+		std::vector<uint8_t> broadcastPacket{2, 0xBE, 0x41, 0xD8, 1, 0x65, 0x51, 0x33, 0x2D, 0x2A, 0, 0x2A, 0, 0x49};
+		if(sendto(serverSocketDescriptor->descriptor, (char*)broadcastPacket.data(), broadcastPacket.size(), 0, (struct sockaddr*)&addessInfo, sizeof(addessInfo)) == -1)
+		{
+			_bl->out.printWarning("Warning: Could send SSDP search broadcast packet: " + std::string(strerror(errno)));
+		}
+
+		uint64_t startTime = _bl->hf.getTime();
+		char buffer[1024];
+		int32_t bytesReceived = 0;
+		struct sockaddr info{};
+		socklen_t slen = sizeof(info);
+		fd_set readFileDescriptor;
+		timeval socketTimeout;
+		int32_t nfds = 0;
+		std::vector<uint8_t> expectedResponse{2, 0xBE, 0x41, 0xD8, 1};
+		while(_bl->hf.getTime() - startTime <= 5000)
+		{
+			try
+			{
+				if(!serverSocketDescriptor || serverSocketDescriptor->descriptor == -1) break;
+
+				socketTimeout.tv_sec = 0;
+				socketTimeout.tv_usec = 100000;
+				FD_ZERO(&readFileDescriptor);
+				auto fileDescriptorGuard = _bl->fileDescriptorManager.getLock();
+				fileDescriptorGuard.lock();
+				nfds = serverSocketDescriptor->descriptor + 1;
+				if(nfds <= 0)
+				{
+					fileDescriptorGuard.unlock();
+					_bl->out.printError("Error: Socket closed (1).");
+					_bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
+					continue;
+				}
+				FD_SET(serverSocketDescriptor->descriptor, &readFileDescriptor);
+				fileDescriptorGuard.unlock();
+				bytesReceived = select(nfds, &readFileDescriptor, NULL, NULL, &socketTimeout);
+				if(bytesReceived == 0) continue;
+				if(bytesReceived != 1)
+				{
+					_bl->out.printError("Error: Socket closed (2).");
+					_bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
+					continue;
+				}
+
+				bytesReceived = recvfrom(serverSocketDescriptor->descriptor, buffer, 1024, 0, &info, &slen);
+				if(bytesReceived == 0 || info.sa_family != AF_INET) continue;
+				else if(bytesReceived == -1)
+				{
+					_bl->out.printError("Error: Socket closed (3).");
+					_bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
+					continue;
+				}
+				if(_bl->debugLevel >= 5) _bl->out.printDebug("Debug: Response received:\n" + std::string(buffer, bytesReceived));
+				std::vector<uint8_t> responseStart(buffer, buffer + 5);
+				if(responseStart == expectedResponse)
+				{
+					char* pos = (char*)memchr(buffer + 5, 0, bytesReceived - 5);
+					if(pos)
+					{
+						std::string device(buffer + 5, pos - (buffer + 5));
+						if(device == "eQ3-HM-CCU2-App")
+						{
+							pos = (char*)memchr(buffer + 5 + device.size() + 1, 0, bytesReceived - 5 - device.size() - 1);
+							if(pos)
+							{
+								std::string serial(buffer + 5 + device.size() + 1, pos - (buffer + 5 + device.size() + 1));
+
+								pos = (char*)memchr(buffer + 5 + device.size() + 1 + serial.size() + 4, 0, bytesReceived - 5 - device.size() - 1 - serial.size() - 4);
+								if(pos)
+								{
+									std::string version(buffer + 5 + device.size() + 1 + serial.size() + 4, pos - (buffer + 5 + device.size() + 1 + serial.size() + 4));
+
+									struct sockaddr_in *s = (struct sockaddr_in*)&info;
+									char ipStringBuffer[INET6_ADDRSTRLEN];
+									inet_ntop(AF_INET, &s->sin_addr, ipStringBuffer, sizeof(ipStringBuffer));
+									std::string senderIp(ipStringBuffer);
+									std::cout << "Moin." << device << "." << serial << "." << version << "." << senderIp << "." << std::endl;
+								}
+							}
+						}
+					}
+				}
+			}
+			catch(const std::exception& ex)
+			{
+				_bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+			}
+			catch(Exception& ex)
+			{
+				_bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+			}
+			catch(...)
+			{
+				_bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+			}
+		}
+
+		_bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
+		return std::make_shared<Variable>();
+	}
+	catch(const std::exception& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch(BaseLib::Exception& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch(...)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+	}
+	_bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
+	return Variable::createError(-32500, "Unknown application error.");
+}
+
 }

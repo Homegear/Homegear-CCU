@@ -27,29 +27,18 @@
  * files in the program, then also delete it here.
  */
 
-#ifndef MYFAMILY_H_
-#define MYFAMILY_H_
+#ifndef HOMEGEAR_CCU2_CCU2_H
+#define HOMEGEAR_CCU2_CCU2_H
 
-#include <homegear-base/BaseLib.h>
-
-using namespace BaseLib;
+#include <homegear-base/Systems/IPhysicalInterface.h>
 
 namespace MyFamily
 {
-class MyCentral;
 
-class MyFamily : public BaseLib::Systems::DeviceFamily
+class Ccu2 : public BaseLib::Systems::IPhysicalInterface
 {
-public:
-	MyFamily(BaseLib::SharedObjects* bl, BaseLib::Systems::DeviceFamily::IFamilyEventSink* eventHandler);
-	virtual ~MyFamily();
-	virtual void dispose();
-
-	virtual bool hasPhysicalInterface() { return false; }
-	virtual PVariable getPairingMethods();
-protected:
-	virtual std::shared_ptr<BaseLib::Systems::ICentral> initializeCentral(uint32_t deviceId, int32_t address, std::string serialNumber);
-	virtual void createCentral();
+    Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings);
+    virtual ~Ccu2();
 };
 
 }

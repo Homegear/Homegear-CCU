@@ -6,7 +6,7 @@ LIBS += -Wl,-Bdynamic
 
 libdir = $(localstatedir)/lib/homegear/modules
 lib_LTLIBRARIES = mod_ccu2.la
-mod_ccu2_la_SOURCES = MyFamily.cpp MyPacket.cpp MyPeer.cpp Factory.cpp GD.cpp MyCentral.cpp Interfaces.cpp PhysicalInterfaces/ICcu2Interface.cpp
+mod_ccu2_la_SOURCES = MyFamily.cpp MyPacket.cpp MyPeer.cpp Factory.cpp GD.cpp MyCentral.cpp Interfaces.cpp PhysicalInterfaces/Ccu2.cpp
 mod_ccu2_la_LDFLAGS =-module -avoid-version -shared
 install-exec-hook:
 	rm -f $(DESTDIR)$(libdir)/mod_ccu2.la
