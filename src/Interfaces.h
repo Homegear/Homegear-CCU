@@ -31,6 +31,7 @@
 #define INTERFACES_H_
 
 #include <homegear-base/BaseLib.h>
+#include "PhysicalInterfaces/Ccu2.h"
 
 namespace MyFamily
 {
@@ -43,7 +44,18 @@ public:
 	Interfaces(BaseLib::SharedObjects* bl, std::map<std::string, Systems::PPhysicalInterfaceSettings> physicalInterfaceSettings);
 	virtual ~Interfaces();
 
+    void addEventHandlers(BaseLib::Systems::IPhysicalInterface::IPhysicalInterfaceEventSink* central);
+    void removeEventHandlers();
+    std::shared_ptr<Ccu2> addInterface(Systems::PPhysicalInterfaceSettings settings, bool storeInDatabase);
+    void removeUnknownInterfaces(std::set<std::string>& knownInterfaces);
+    std::shared_ptr<Ccu2> getDefaultInterface();
+    std::shared_ptr<Ccu2> getInterface(std::string& name);
+    std::shared_ptr<Ccu2> getInterfaceByIp(std::string& ipAddress);
+    std::vector<std::shared_ptr<Ccu2>> getInterfaces();
 protected:
+    std::shared_ptr<Ccu2> _defaultPhysicalInterface;
+    std::map<std::string, PEventHandler> _physicalInterfaceEventhandlers;
+
 	virtual void create();
 };
 

@@ -33,7 +33,6 @@ namespace MyFamily
 {
 	BaseLib::SharedObjects* GD::bl = nullptr;
 	MyFamily* GD::family = nullptr;
-	std::map<std::string, std::shared_ptr<Ccu2>> GD::physicalInterfaces;
-	std::shared_ptr<Ccu2> GD::defaultPhysicalInterface;
+std::shared_ptr<Interfaces> GD::interfaces;
 	BaseLib::Output GD::out;
 }

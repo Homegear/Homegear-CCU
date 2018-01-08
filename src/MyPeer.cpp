@@ -309,21 +309,16 @@ std::string MyPeer::printConfig()
 
 std::string MyPeer::getPhysicalInterfaceId()
 {
-	if(_physicalInterfaceId.empty()) setPhysicalInterfaceId(GD::defaultPhysicalInterface->getID());
 	return _physicalInterfaceId;
 }
 
 void MyPeer::setPhysicalInterfaceId(std::string id)
 {
-	if(id.empty() || (GD::physicalInterfaces.find(id) != GD::physicalInterfaces.end() && GD::physicalInterfaces.at(id)))
+	auto interface = GD::interfaces->getInterface(id);
+	if(id.empty() || interface)
 	{
 		_physicalInterfaceId = id;
-		setPhysicalInterface(id.empty() ? GD::defaultPhysicalInterface : GD::physicalInterfaces.at(_physicalInterfaceId));
-		saveVariable(19, _physicalInterfaceId);
-	}
-	else
-	{
-		setPhysicalInterface(GD::defaultPhysicalInterface);
+		setPhysicalInterface(id.empty() ? GD::interfaces->getDefaultInterface() : interface);
 		saveVariable(19, _physicalInterfaceId);
 	}
 }
@@ -365,11 +360,16 @@ void MyPeer::loadVariables(BaseLib::Systems::ICentral* central, std::shared_ptr<
 			{
 			case 19:
 				_physicalInterfaceId = row->second.at(4)->textValue;
-				if(!_physicalInterfaceId.empty() && GD::physicalInterfaces.find(_physicalInterfaceId) != GD::physicalInterfaces.end()) setPhysicalInterface(GD::physicalInterfaces.at(_physicalInterfaceId));
+				auto interface = GD::interfaces->getInterface(_physicalInterfaceId);
+				if(!_physicalInterfaceId.empty() && interface) setPhysicalInterface(interface);
 				break;
 			}
 		}
-		if(!_physicalInterface) _physicalInterface = GD::defaultPhysicalInterface;
+		if(!_physicalInterface)
+		{
+			GD::out.printError("Error: Could not find correct physical interface for peer " + std::to_string(_peerID) + ". The peer might not work correctly.");
+			_physicalInterface = GD::interfaces->getDefaultInterface();
+		}
 	}
 	catch(const std::exception& ex)
     {
@@ -636,33 +636,6 @@ PVariable MyPeer::putParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channe
 		{
 			return Variable::createError(-3, "Parameter set type is not supported.");
 		}
-		return PVariable(new Variable(VariableType::tVoid));
-	}
-	catch(const std::exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
-    return Variable::createError(-32500, "Unknown application error.");
-}
-
-PVariable MyPeer::setInterface(BaseLib::PRpcClientInfo clientInfo, std::string interfaceId)
-{
-	try
-	{
-		if(!interfaceId.empty() && GD::physicalInterfaces.find(interfaceId) == GD::physicalInterfaces.end())
-		{
-			return Variable::createError(-5, "Unknown physical interface.");
-		}
-		std::shared_ptr<Ccu2> interface(GD::physicalInterfaces.at(interfaceId));
-		setPhysicalInterfaceId(interfaceId);
 		return PVariable(new Variable(VariableType::tVoid));
 	}
 	catch(const std::exception& ex)

@@ -49,6 +49,8 @@ public:
 	virtual ~MyCentral();
 	virtual void dispose(bool wait = true);
 
+	virtual void homegearShuttingDown();
+
 	std::string handleCliCommand(std::string command);
 	virtual bool onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib::Systems::Packet> packet);
 
@@ -66,7 +68,12 @@ public:
 	virtual PVariable searchDevices(BaseLib::PRpcClientInfo clientInfo);
 	virtual PVariable searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLib::PVariable metadata);
 protected:
+	std::atomic_bool _shuttingDown;
+	std::atomic_bool _stopWorkerThread;
+	std::thread _workerThread;
+
 	virtual void init();
+	void worker();
 	virtual void loadPeers();
 	virtual void savePeers(bool full);
 	virtual void loadVariables() {}

@@ -35,10 +35,178 @@ namespace MyFamily
 
 Ccu2::Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings) : IPhysicalInterface(GD::bl, GD::family->getFamily(), settings)
 {
+    if(settings->listenThreadPriority == -1)
+    {
+        settings->listenThreadPriority = 0;
+        settings->listenThreadPolicy = SCHED_OTHER;
+    }
 
+    _out.init(GD::bl);
+    BaseLib::HelperFunctions::toUpper(settings->id);
+    _out.setPrefix(GD::out.getPrefix() + settings->id + ": ");
+
+    signal(SIGPIPE, SIG_IGN);
+
+    if(!settings)
+    {
+        _out.printCritical("Critical: Error initializing. Settings pointer is empty.");
+        return;
+    }
+
+    if(settings->host.empty()) _noHost = true;
+    _hostname = settings->host;
+    _port = BaseLib::Math::getNumber(settings->port);
+    if(_port < 1 || _port > 65535) _port = 80;
 }
 
 Ccu2::~Ccu2()
+{
+    _stopCallbackThread = true;
+    _bl->threadManager.join(_listenThread);
+}
+
+void Ccu2::sendPacket(std::shared_ptr<BaseLib::Systems::Packet> packet)
+{
+    try
+    {
+        if(_noHost) return;
+        if(!packet)
+        {
+            _out.printWarning("Warning: Packet was nullptr.");
+            return;
+        }
+
+
+
+        _lastPacketSent = BaseLib::HelperFunctions::getTime();
+    }
+    catch(const std::exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+}
+
+void Ccu2::startListening()
+{
+    try
+    {
+        stopListening();
+
+        _noHost = _settings->host.empty();
+
+        if(!_noHost)
+        {
+            BaseLib::TcpSocket::TcpServerInfo serverInfo;
+            serverInfo.newConnectionCallback = std::bind(&Ccu2::newConnection, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+            serverInfo.packetReceivedCallback = std::bind(&Ccu2::packetReceived, this, std::placeholders::_1, std::placeholders::_2);
+
+            _server = std::make_shared<BaseLib::TcpSocket>(GD::bl, serverInfo);
+            std::string listenAddress;
+            _server->startServer("0.0.0.0", listenAddress, _listenPort);
+            _out.printInfo("RPC server started listening on " + listenAddress + ":" + std::to_string(_listenPort));
+
+            _client = std::unique_ptr<BaseLib::TcpSocket>(new BaseLib::TcpSocket(_bl, _hostname, std::to_string(_port)));
+            _ipAddress = _client->getIpAddress();
+            _noHost = _hostname.empty();
+
+            if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this);
+            else _bl->threadManager.start(_listenThread, true, &Ccu2::listen, this);
+        }
+        IPhysicalInterface::startListening();
+    }
+    catch(const std::exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+}
+
+void Ccu2::stopListening()
+{
+    try
+    {
+        _stopCallbackThread = true;
+        _bl->threadManager.join(_listenThread);
+        _stopCallbackThread = false;
+
+        if(_client) _client->close();
+        if(_server)
+        {
+            _server->stopServer();
+            _server->waitForServerStopped();
+        }
+        IPhysicalInterface::stopListening();
+    }
+    catch(const std::exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+}
+
+void Ccu2::newConnection(int32_t clientId, std::string address, uint16_t port)
+{
+    try
+    {
+        _out.printInfo("Info: New connection from " + address + " on port " + std::to_string(port));
+    }
+    catch(const std::exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+}
+
+void Ccu2::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet)
+{
+    try
+    {
+
+    }
+    catch(const std::exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+}
+
+void Ccu2::listen()
 {
 
 }

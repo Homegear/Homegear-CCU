@@ -42,12 +42,23 @@ MyFamily::MyFamily(BaseLib::SharedObjects* bl, BaseLib::Systems::DeviceFamily::I
 	GD::out.init(bl);
 	GD::out.setPrefix(std::string("Module ") + MY_FAMILY_NAME + ": ");
 	GD::out.printDebug("Debug: Loading module...");
-	_physicalInterfaces.reset(new Interfaces(bl, _settings->getPhysicalInterfaceSettings()));
+	GD::interfaces = std::make_shared<Interfaces>(bl, _settings->getPhysicalInterfaceSettings());
+    _physicalInterfaces = GD::interfaces;
 }
 
 MyFamily::~MyFamily()
 {
 
+}
+
+bool MyFamily::init()
+{
+	_bl->out.printInfo("Loading XML RPC devices...");
+	std::string xmlPath = _bl->settings.familyDataPath() + std::to_string(GD::family->getFamily()) + "/desc/";
+	BaseLib::Io io;
+	io.init(_bl);
+	if(BaseLib::Io::directoryExists(xmlPath) && !io.getFiles(xmlPath).empty()) _rpcDevices->load(xmlPath);
+	return true;
 }
 
 void MyFamily::dispose()

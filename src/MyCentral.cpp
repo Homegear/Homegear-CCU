@@ -55,11 +55,10 @@ void MyCentral::dispose(bool wait)
 		_disposing = true;
 
 		GD::out.printDebug("Removing device " + std::to_string(_deviceId) + " from physical device's event queue...");
-		for(std::map<std::string, std::shared_ptr<Ccu2>>::iterator i = GD::physicalInterfaces.begin(); i != GD::physicalInterfaces.end(); ++i)
-		{
-			//Just to make sure cycle through all physical devices. If event handler is not removed => segfault
-			i->second->removeEventHandler(_physicalInterfaceEventhandlers[i->first]);
-		}
+        GD::interfaces->removeEventHandlers();
+
+		GD::out.printDebug("Debug: Waiting for worker thread of device " + std::to_string(_deviceId) + "...");
+		_bl->threadManager.join(_workerThread);
 	}
     catch(const std::exception& ex)
     {
@@ -79,12 +78,72 @@ void MyCentral::init()
 {
 	try
 	{
-		if(_initialized) return; //Prevent running init two times
-		_initialized = true;
+		_shuttingDown = false;
+		_stopWorkerThread = false;
 
-		for(std::map<std::string, std::shared_ptr<Ccu2>>::iterator i = GD::physicalInterfaces.begin(); i != GD::physicalInterfaces.end(); ++i)
+        GD::interfaces->addEventHandlers((BaseLib::Systems::IPhysicalInterface::IPhysicalInterfaceEventSink*)this);
+
+		GD::bl->threadManager.start(_workerThread, true, _bl->settings.workerThreadPriority(), _bl->settings.workerThreadPolicy(), &PhilipsHueCentral::worker, this);
+	}
+	catch(const std::exception& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch(BaseLib::Exception& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch(...)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+	}
+}
+
+void MyCentral::homegearShuttingDown()
+{
+	_shuttingDown = true;
+}
+
+void MyCentral::worker()
+{
+	try
+	{
+		while(GD::bl->booting && !_stopWorkerThread)
 		{
-			_physicalInterfaceEventhandlers[i->first] = i->second->addEventHandler((BaseLib::Systems::IPhysicalInterface::IPhysicalInterfaceEventSink*)this);
+			std::this_thread::sleep_for(std::chrono::seconds(1));
+		}
+
+		std::chrono::milliseconds sleepingTime(1000);
+		uint32_t counter = 0;
+		uint32_t countsPer10Minutes = BaseLib::HelperFunctions::getRandomNumber(10, 600);
+
+		while(!_stopWorkerThread && !_shuttingDown)
+		{
+			try
+			{
+				std::this_thread::sleep_for(sleepingTime);
+				if(_stopWorkerThread || _shuttingDown) return;
+				// Update devices (most importantly the IP address)
+				if(counter > countsPer10Minutes)
+				{
+					countsPer10Minutes = 600;
+					counter = 0;
+					searchInterfaces(nullptr, nullptr);
+				}
+				counter++;
+			}
+			catch(const std::exception& ex)
+			{
+				GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+			}
+			catch(BaseLib::Exception& ex)
+			{
+				GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+			}
+			catch(...)
+			{
+				GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+			}
 		}
 	}
 	catch(const std::exception& ex)
@@ -337,14 +396,28 @@ std::string MyCentral::handleCliCommand(std::string command)
 		{
 			stringStream << "List of commands:" << std::endl << std::endl;
 			stringStream << "For more information about the individual command type: COMMAND help" << std::endl << std::endl;
+			stringStream << "search              Searches and adds CCUs" << std::endl;
 			stringStream << "pairing on (pon)    Enables pairing mode" << std::endl;
 			stringStream << "pairing off (pof)   Disables pairing mode" << std::endl;
-			stringStream << "peers create (pc)   Creates a new peer" << std::endl;
 			stringStream << "peers list (ls)     List all peers" << std::endl;
 			stringStream << "peers remove (pr)   Remove a peer" << std::endl;
 			stringStream << "peers select (ps)   Select a peer" << std::endl;
 			stringStream << "peers setname (pn)  Name a peer" << std::endl;
 			stringStream << "unselect (u)        Unselect this device" << std::endl;
+			return stringStream.str();
+		}
+		else if(BaseLib::HelperFunctions::checkCliCommand(command, "search", "", "", 0, arguments, showHelp))
+		{
+			if(showHelp)
+			{
+				stringStream << "Description: This command searches for and adds CCUs." << std::endl;
+				stringStream << "Usage: search" << std::endl << std::endl;
+				return stringStream.str();
+			}
+
+			searchInterfaces(nullptr, nullptr);
+
+			stringStream << "Search completed." << std::endl;
 			return stringStream.str();
 		}
 		else if(BaseLib::HelperFunctions::checkCliCommand(command, "pairing on", "pon", "", 0, arguments, showHelp))
@@ -382,68 +455,6 @@ std::string MyCentral::handleCliCommand(std::string command)
 
 			setInstallMode(nullptr, false, -1, false);
 			stringStream << "Pairing mode disabled." << std::endl;
-			return stringStream.str();
-		}
-		else if(BaseLib::HelperFunctions::checkCliCommand(command, "peers create", "pc", "", 3, arguments, showHelp))
-		{
-			if(showHelp)
-			{
-				stringStream << "Description: This command creates a new peer." << std::endl;
-				stringStream << "Usage: peers create INTERFACE TYPE ADDRESS" << std::endl << std::endl;
-				stringStream << "Parameters:" << std::endl;
-				stringStream << "  INTERFACE: The id of the interface to associate the new device to as defined in the familie's configuration file." << std::endl;
-				stringStream << "  TYPE:      The 3 or 4 byte hexadecimal device type (for most devices the EEP number). Example: 0xF60201" << std::endl;
-				stringStream << "  ADDRESS:   The 4 byte address/ID printed on the device. Example: 0x01952B7A" << std::endl;
-				return stringStream.str();
-			}
-
-			std::string interfaceId = arguments.at(0);
-			if(GD::physicalInterfaces.find(interfaceId) == GD::physicalInterfaces.end()) return "Unknown physical interface.\n";
-			int32_t deviceType = BaseLib::Math::getNumber(arguments.at(1), true);
-			if(deviceType == 0) return "Invalid device type. Device type has to be provided in hexadecimal format.\n";
-			int32_t address = BaseLib::Math::getNumber(arguments.at(2), true);
-			std::string serial = "EOD" + BaseLib::HelperFunctions::getHexString(address, 8);
-
-			if(peerExists(serial) || peerExists(address)) stringStream << "A peer with this address is already paired to this central." << std::endl;
-			else
-			{
-				std::shared_ptr<MyPeer> peer = createPeer(deviceType, address, serial, false);
-				if(!peer || !peer->getRpcDevice()) return "Device type not supported.\n";
-				try
-				{
-					_peersMutex.lock();
-					if(!peer->getSerialNumber().empty()) _peersBySerial[peer->getSerialNumber()] = peer;
-					_peersMutex.unlock();
-					peer->save(true, true, false);
-					peer->initializeCentralConfig();
-					peer->setPhysicalInterfaceId(interfaceId);
-					_peersMutex.lock();
-					_peers[peer->getAddress()] = peer;
-					_peersById[peer->getID()] = peer;
-					_peersMutex.unlock();
-				}
-				catch(const std::exception& ex)
-				{
-					_peersMutex.unlock();
-					GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-				}
-				catch(BaseLib::Exception& ex)
-				{
-					_peersMutex.unlock();
-					GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-				}
-				catch(...)
-				{
-					_peersMutex.unlock();
-					GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-				}
-
-				PVariable deviceDescriptions(new Variable(VariableType::tArray));
-				deviceDescriptions->arrayValue = peer->getDeviceDescriptions(nullptr, true, std::map<std::string, bool>());
-				raiseRPCNewDevices(deviceDescriptions);
-				GD::out.printMessage("Added peer " + std::to_string(peer->getID()) + ".");
-				stringStream << "Added peer " << std::to_string(peer->getID()) << " with address 0x" << BaseLib::HelperFunctions::getHexString(peer->getAddress(), 8) << " and serial number " << serial << "." << std::dec << std::endl;
-			}
 			return stringStream.str();
 		}
 		else if(BaseLib::HelperFunctions::checkCliCommand(command, "peers remove", "pr", "prm", 1, arguments, showHelp))
@@ -993,149 +1004,175 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
 	PFileDescriptor serverSocketDescriptor;
 	try
 	{
-		serverSocketDescriptor = _bl->fileDescriptorManager.add(socket(AF_INET, SOCK_DGRAM, 0));
-		if(serverSocketDescriptor->descriptor == -1)
-		{
-			_bl->out.printError("Error: Could not create socket.");
-			return Variable::createError(-1, "Could not create socket.");
-		}
+        //{{{ UDP search
+            serverSocketDescriptor = _bl->fileDescriptorManager.add(socket(AF_INET, SOCK_DGRAM, 0));
+            if(serverSocketDescriptor->descriptor == -1)
+            {
+                _bl->out.printError("Error: Could not create socket.");
+                return Variable::createError(-1, "Could not create socket.");
+            }
 
-		int32_t reuse = 1;
-		if(setsockopt(serverSocketDescriptor->descriptor, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) == -1)
-		{
-			_bl->out.printWarning("Warning: Could set socket options: " + std::string(strerror(errno)));
-		}
+            int32_t reuse = 1;
+            if(setsockopt(serverSocketDescriptor->descriptor, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) == -1)
+            {
+                _bl->out.printWarning("Warning: Could set socket options: " + std::string(strerror(errno)));
+            }
 
-        char loopch = 0;
-        if(setsockopt(serverSocketDescriptor->descriptor, IPPROTO_IP, IP_MULTICAST_LOOP, (char *)&loopch, sizeof(loopch)) == -1)
-        {
-            _bl->out.printWarning("Warning: Could set socket options: " + std::string(strerror(errno)));
-        }
+            char loopch = 0;
+            if(setsockopt(serverSocketDescriptor->descriptor, IPPROTO_IP, IP_MULTICAST_LOOP, (char *)&loopch, sizeof(loopch)) == -1)
+            {
+                _bl->out.printWarning("Warning: Could set socket options: " + std::string(strerror(errno)));
+            }
 
-		struct in_addr localInterface;
-		localInterface.s_addr = inet_addr("0.0.0.0");
-		if(setsockopt(serverSocketDescriptor->descriptor, IPPROTO_IP, IP_MULTICAST_IF, (char *)&localInterface, sizeof(localInterface)) == -1)
-		{
-			_bl->out.printWarning("Warning: Could set socket options: " + std::string(strerror(errno)));
-		}
+            struct in_addr localInterface;
+            localInterface.s_addr = inet_addr("0.0.0.0");
+            if(setsockopt(serverSocketDescriptor->descriptor, IPPROTO_IP, IP_MULTICAST_IF, (char *)&localInterface, sizeof(localInterface)) == -1)
+            {
+                _bl->out.printWarning("Warning: Could set socket options: " + std::string(strerror(errno)));
+            }
 
-		struct sockaddr_in localSock;
-		memset((char *) &localSock, 0, sizeof(localSock));
-		localSock.sin_family = AF_INET;
-		localSock.sin_port = 0;
-		localSock.sin_addr.s_addr = inet_addr("239.255.255.250");
+            struct sockaddr_in localSock;
+            memset((char *) &localSock, 0, sizeof(localSock));
+            localSock.sin_family = AF_INET;
+            localSock.sin_port = 0;
+            localSock.sin_addr.s_addr = inet_addr("239.255.255.250");
 
-		if(bind(serverSocketDescriptor->descriptor, (struct sockaddr*)&localSock, sizeof(localSock)) == -1)
-		{
-			_bl->out.printError("Error: Binding failed: " + std::string(strerror(errno)));
-			_bl->fileDescriptorManager.close(serverSocketDescriptor);
-			return Variable::createError(-2, "Binding failed.");
-		}
+            if(bind(serverSocketDescriptor->descriptor, (struct sockaddr*)&localSock, sizeof(localSock)) == -1)
+            {
+                _bl->out.printError("Error: Binding failed: " + std::string(strerror(errno)));
+                _bl->fileDescriptorManager.close(serverSocketDescriptor);
+                return Variable::createError(-2, "Binding failed.");
+            }
 
-		struct sockaddr_in addessInfo;
-		addessInfo.sin_family = AF_INET;
-		addessInfo.sin_addr.s_addr = inet_addr("239.255.255.250");
-		addessInfo.sin_port = htons(43439);
+            struct sockaddr_in addessInfo;
+            addessInfo.sin_family = AF_INET;
+            addessInfo.sin_addr.s_addr = inet_addr("239.255.255.250");
+            addessInfo.sin_port = htons(43439);
 
-		std::vector<uint8_t> broadcastPacket{2, 0xBE, 0x41, 0xD8, 1, 0x65, 0x51, 0x33, 0x2D, 0x2A, 0, 0x2A, 0, 0x49};
-		if(sendto(serverSocketDescriptor->descriptor, (char*)broadcastPacket.data(), broadcastPacket.size(), 0, (struct sockaddr*)&addessInfo, sizeof(addessInfo)) == -1)
-		{
-			_bl->out.printWarning("Warning: Could send SSDP search broadcast packet: " + std::string(strerror(errno)));
-		}
+            std::vector<uint8_t> broadcastPacket{2, 0xBE, 0x41, 0xD8, 1, 0x65, 0x51, 0x33, 0x2D, 0x2A, 0, 0x2A, 0, 0x49};
+            if(sendto(serverSocketDescriptor->descriptor, (char*)broadcastPacket.data(), broadcastPacket.size(), 0, (struct sockaddr*)&addessInfo, sizeof(addessInfo)) == -1)
+            {
+                _bl->out.printWarning("Warning: Could send SSDP search broadcast packet: " + std::string(strerror(errno)));
+            }
 
-		uint64_t startTime = _bl->hf.getTime();
-		char buffer[1024];
-		int32_t bytesReceived = 0;
-		struct sockaddr info{};
-		socklen_t slen = sizeof(info);
-		fd_set readFileDescriptor;
-		timeval socketTimeout;
-		int32_t nfds = 0;
-		std::vector<uint8_t> expectedResponse{2, 0xBE, 0x41, 0xD8, 1};
-		while(_bl->hf.getTime() - startTime <= 5000)
-		{
-			try
-			{
-				if(!serverSocketDescriptor || serverSocketDescriptor->descriptor == -1) break;
+            uint64_t startTime = _bl->hf.getTime();
+            char buffer[1024];
+            int32_t bytesReceived = 0;
+            struct sockaddr info{};
+            socklen_t slen = sizeof(info);
+            fd_set readFileDescriptor;
+            timeval socketTimeout;
+            int32_t nfds = 0;
+            std::vector<uint8_t> expectedResponse{2, 0xBE, 0x41, 0xD8, 1};
+            std::set<std::string> foundInterfaces;
+            while(_bl->hf.getTime() - startTime <= 5000)
+            {
+                try
+                {
+                    if(!serverSocketDescriptor || serverSocketDescriptor->descriptor == -1) break;
 
-				socketTimeout.tv_sec = 0;
-				socketTimeout.tv_usec = 100000;
-				FD_ZERO(&readFileDescriptor);
-				auto fileDescriptorGuard = _bl->fileDescriptorManager.getLock();
-				fileDescriptorGuard.lock();
-				nfds = serverSocketDescriptor->descriptor + 1;
-				if(nfds <= 0)
-				{
-					fileDescriptorGuard.unlock();
-					_bl->out.printError("Error: Socket closed (1).");
-					_bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
-					continue;
-				}
-				FD_SET(serverSocketDescriptor->descriptor, &readFileDescriptor);
-				fileDescriptorGuard.unlock();
-				bytesReceived = select(nfds, &readFileDescriptor, NULL, NULL, &socketTimeout);
-				if(bytesReceived == 0) continue;
-				if(bytesReceived != 1)
-				{
-					_bl->out.printError("Error: Socket closed (2).");
-					_bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
-					continue;
-				}
+                    socketTimeout.tv_sec = 0;
+                    socketTimeout.tv_usec = 100000;
+                    FD_ZERO(&readFileDescriptor);
+                    auto fileDescriptorGuard = _bl->fileDescriptorManager.getLock();
+                    fileDescriptorGuard.lock();
+                    nfds = serverSocketDescriptor->descriptor + 1;
+                    if(nfds <= 0)
+                    {
+                        fileDescriptorGuard.unlock();
+                        _bl->out.printError("Error: Socket closed (1).");
+                        _bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
+                        continue;
+                    }
+                    FD_SET(serverSocketDescriptor->descriptor, &readFileDescriptor);
+                    fileDescriptorGuard.unlock();
+                    bytesReceived = select(nfds, &readFileDescriptor, NULL, NULL, &socketTimeout);
+                    if(bytesReceived == 0) continue;
+                    if(bytesReceived != 1)
+                    {
+                        _bl->out.printError("Error: Socket closed (2).");
+                        _bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
+                        continue;
+                    }
 
-				bytesReceived = recvfrom(serverSocketDescriptor->descriptor, buffer, 1024, 0, &info, &slen);
-				if(bytesReceived == 0 || info.sa_family != AF_INET) continue;
-				else if(bytesReceived == -1)
-				{
-					_bl->out.printError("Error: Socket closed (3).");
-					_bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
-					continue;
-				}
-				if(_bl->debugLevel >= 5) _bl->out.printDebug("Debug: Response received:\n" + std::string(buffer, bytesReceived));
-				std::vector<uint8_t> responseStart(buffer, buffer + 5);
-				if(responseStart == expectedResponse)
-				{
-					char* pos = (char*)memchr(buffer + 5, 0, bytesReceived - 5);
-					if(pos)
-					{
-						std::string device(buffer + 5, pos - (buffer + 5));
-						if(device == "eQ3-HM-CCU2-App")
-						{
-							pos = (char*)memchr(buffer + 5 + device.size() + 1, 0, bytesReceived - 5 - device.size() - 1);
-							if(pos)
-							{
-								std::string serial(buffer + 5 + device.size() + 1, pos - (buffer + 5 + device.size() + 1));
+                    bytesReceived = recvfrom(serverSocketDescriptor->descriptor, buffer, 1024, 0, &info, &slen);
+                    if(bytesReceived == 0 || info.sa_family != AF_INET) continue;
+                    else if(bytesReceived == -1)
+                    {
+                        _bl->out.printError("Error: Socket closed (3).");
+                        _bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
+                        continue;
+                    }
+                    if(_bl->debugLevel >= 5) _bl->out.printDebug("Debug: Response received:\n" + std::string(buffer, bytesReceived));
+                    std::vector<uint8_t> responseStart(buffer, buffer + 5);
+                    if(responseStart == expectedResponse)
+                    {
+                        char* pos = (char*)memchr(buffer + 5, 0, bytesReceived - 5);
+                        if(pos)
+                        {
+                            std::string device(buffer + 5, pos - (buffer + 5));
+                            if(device == "eQ3-HM-CCU2-App")
+                            {
+                                pos = (char*)memchr(buffer + 5 + device.size() + 1, 0, bytesReceived - 5 - device.size() - 1);
+                                if(pos)
+                                {
+                                    std::string serial(buffer + 5 + device.size() + 1, pos - (buffer + 5 + device.size() + 1));
+                                    serial = BaseLib::HelperFunctions::stripNonAlphaNumeric(serial);
 
-								pos = (char*)memchr(buffer + 5 + device.size() + 1 + serial.size() + 4, 0, bytesReceived - 5 - device.size() - 1 - serial.size() - 4);
-								if(pos)
-								{
-									std::string version(buffer + 5 + device.size() + 1 + serial.size() + 4, pos - (buffer + 5 + device.size() + 1 + serial.size() + 4));
+                                    pos = (char*)memchr(buffer + 5 + device.size() + 1 + serial.size() + 4, 0, bytesReceived - 5 - device.size() - 1 - serial.size() - 4);
+                                    if(pos)
+                                    {
+                                        std::string version(buffer + 5 + device.size() + 1 + serial.size() + 4, pos - (buffer + 5 + device.size() + 1 + serial.size() + 4));
 
-									struct sockaddr_in *s = (struct sockaddr_in*)&info;
-									char ipStringBuffer[INET6_ADDRSTRLEN];
-									inet_ntop(AF_INET, &s->sin_addr, ipStringBuffer, sizeof(ipStringBuffer));
-									std::string senderIp(ipStringBuffer);
-									std::cout << "Moin." << device << "." << serial << "." << version << "." << senderIp << "." << std::endl;
-								}
-							}
-						}
-					}
-				}
-			}
-			catch(const std::exception& ex)
-			{
-				_bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-			}
-			catch(Exception& ex)
-			{
-				_bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-			}
-			catch(...)
-			{
-				_bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-			}
-		}
+                                        struct sockaddr_in *s = (struct sockaddr_in*)&info;
+                                        char ipStringBuffer[INET6_ADDRSTRLEN];
+                                        inet_ntop(AF_INET, &s->sin_addr, ipStringBuffer, sizeof(ipStringBuffer));
+                                        std::string senderIp(ipStringBuffer);
 
-		_bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
+                                        if(serial.empty() || senderIp.empty()) continue;
+                                        auto interface = GD::interfaces->getInterface(serial);
+                                        if(interface && interface->getHostname() == senderIp) continue;
+
+                                        Systems::PPhysicalInterfaceSettings settings = std::make_shared<Systems::PhysicalInterfaceSettings>();
+                                        settings->id = serial;
+                                        settings->type = "ccu2-auto";
+                                        settings->host = senderIp;
+                                        settings->port = "2001";
+
+                                        foundInterfaces.emplace(serial);
+
+                                        std::shared_ptr<Ccu2> newInterface = GD::interfaces->addInterface(settings, true);
+                                        if(newInterface)
+                                        {
+                                            GD::out.printInfo("Info: Found new CCU2 with IP address " + senderIp + " and serial number " + settings->id + ".");
+                                            newInterface->startListening();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch(const std::exception& ex)
+                {
+                    _bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+                }
+                catch(Exception& ex)
+                {
+                    _bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+                }
+                catch(...)
+                {
+                    _bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+                }
+            }
+
+            _bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
+        //}}}
+
+        if(!foundInterfaces.empty()) GD::interfaces->addEventHandlers((BaseLib::Systems::IPhysicalInterface::IPhysicalInterfaceEventSink*)this);
+        GD::interfaces->removeUnknownInterfaces(foundInterfaces);
+
 		return std::make_shared<Variable>();
 	}
 	catch(const std::exception& ex)

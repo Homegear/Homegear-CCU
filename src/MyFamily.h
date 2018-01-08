@@ -43,6 +43,7 @@ class MyFamily : public BaseLib::Systems::DeviceFamily
 public:
 	MyFamily(BaseLib::SharedObjects* bl, BaseLib::Systems::DeviceFamily::IFamilyEventSink* eventHandler);
 	virtual ~MyFamily();
+    virtual bool init();
 	virtual void dispose();
 
 	virtual bool hasPhysicalInterface() { return false; }

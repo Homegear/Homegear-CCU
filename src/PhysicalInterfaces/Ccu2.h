@@ -31,14 +31,32 @@
 #define HOMEGEAR_CCU2_CCU2_H
 
 #include <homegear-base/Systems/IPhysicalInterface.h>
+#include <homegear-base/Sockets/TcpSocket.h>
 
 namespace MyFamily
 {
 
 class Ccu2 : public BaseLib::Systems::IPhysicalInterface
 {
+public:
     Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings);
     virtual ~Ccu2();
+
+    void startListening();
+    void stopListening();
+    void sendPacket(std::shared_ptr<BaseLib::Systems::Packet> packet);
+    virtual bool isOpen() { return _client && _client->connected(); }
+private:
+    BaseLib::Output _out;
+    bool _noHost = true;
+    int32_t _port = 2001;
+    int32_t _listenPort = -1;
+    std::shared_ptr<BaseLib::TcpSocket> _server;
+    std::unique_ptr<BaseLib::TcpSocket> _client;
+
+    void newConnection(int32_t clientId, std::string address, uint16_t port);
+    void packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet);
+    void listen();
 };
 
 }
