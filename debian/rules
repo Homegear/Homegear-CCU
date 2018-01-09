@@ -1,0 +1,15 @@
+#!/usr/bin/make -f
+
+override_dh_auto_install:
+	dh_auto_install
+
+	mkdir -p $(CURDIR)/debian/homegear-ccu2/etc/homegear/families
+	cp -R $(CURDIR)/misc/Config\ Directory/* $(CURDIR)/debian/homegear-ccu2/etc/homegear/families
+	chmod 755 $(CURDIR)/debian/homegear-ccu2/etc/homegear/families
+	chmod 644 $(CURDIR)/debian/homegear-ccu2/etc/homegear/families/*
+
+override_dh_strip:
+	dh_strip
+
+%:
+	dh $@ --parallel
