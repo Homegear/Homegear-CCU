@@ -39,11 +39,14 @@ class MyPacket : public BaseLib::Systems::Packet
 {
     public:
         MyPacket();
+        MyPacket(std::string& methodName, BaseLib::PArray& parameters);
         virtual ~MyPacket();
 
-        int32_t getRssi() { return _rssi; }
+        std::string getMethodName() { return _methodName; }
+        BaseLib::PArray getParameters() { return _parameters; }
     protected:
-        int32_t _rssi = 0;
+        std::string _methodName;
+        BaseLib::PArray _parameters;
 };
 
 typedef std::shared_ptr<MyPacket> PMyPacket;

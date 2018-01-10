@@ -43,10 +43,12 @@ class MyFamily : public BaseLib::Systems::DeviceFamily
 public:
 	MyFamily(BaseLib::SharedObjects* bl, BaseLib::Systems::DeviceFamily::IFamilyEventSink* eventHandler);
 	virtual ~MyFamily();
+    virtual bool init();
 	virtual void dispose();
 
 	virtual bool hasPhysicalInterface() { return false; }
 	virtual PVariable getPairingMethods();
+    void reloadRpcDevices();
 protected:
 	virtual std::shared_ptr<BaseLib::Systems::ICentral> initializeCentral(uint32_t deviceId, int32_t address, std::string serialNumber);
 	virtual void createCentral();

@@ -54,12 +54,17 @@ void MyCentral::dispose(bool wait)
 		if(_disposing) return;
 		_disposing = true;
 
+        {
+            std::lock_guard<std::mutex> pairingModeGuard(_pairingModeThreadMutex);
+            _stopPairingModeThread = true;
+            _bl->threadManager.join(_pairingModeThread);
+        }
+
 		GD::out.printDebug("Removing device " + std::to_string(_deviceId) + " from physical device's event queue...");
-		for(std::map<std::string, std::shared_ptr<Ccu2>>::iterator i = GD::physicalInterfaces.begin(); i != GD::physicalInterfaces.end(); ++i)
-		{
-			//Just to make sure cycle through all physical devices. If event handler is not removed => segfault
-			i->second->removeEventHandler(_physicalInterfaceEventhandlers[i->first]);
-		}
+        GD::interfaces->removeEventHandlers();
+
+		GD::out.printDebug("Debug: Waiting for worker thread of device " + std::to_string(_deviceId) + "...");
+		_bl->threadManager.join(_workerThread);
 	}
     catch(const std::exception& ex)
     {
@@ -79,12 +84,73 @@ void MyCentral::init()
 {
 	try
 	{
-		if(_initialized) return; //Prevent running init two times
-		_initialized = true;
+		_shuttingDown = false;
+		_stopWorkerThread = false;
+        _pairing = false;
 
-		for(std::map<std::string, std::shared_ptr<Ccu2>>::iterator i = GD::physicalInterfaces.begin(); i != GD::physicalInterfaces.end(); ++i)
+        GD::interfaces->addEventHandlers((BaseLib::Systems::IPhysicalInterface::IPhysicalInterfaceEventSink*)this);
+
+		GD::bl->threadManager.start(_workerThread, true, _bl->settings.workerThreadPriority(), _bl->settings.workerThreadPolicy(), &MyCentral::worker, this);
+	}
+	catch(const std::exception& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch(BaseLib::Exception& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch(...)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+	}
+}
+
+void MyCentral::homegearShuttingDown()
+{
+	_shuttingDown = true;
+}
+
+void MyCentral::worker()
+{
+	try
+	{
+		while(GD::bl->booting && !_stopWorkerThread)
 		{
-			_physicalInterfaceEventhandlers[i->first] = i->second->addEventHandler((BaseLib::Systems::IPhysicalInterface::IPhysicalInterfaceEventSink*)this);
+			std::this_thread::sleep_for(std::chrono::seconds(1));
+		}
+
+		std::chrono::milliseconds sleepingTime(1000);
+		uint32_t counter = 0;
+		uint32_t countsPer10Minutes = BaseLib::HelperFunctions::getRandomNumber(10, 600);
+
+		while(!_stopWorkerThread && !_shuttingDown)
+		{
+			try
+			{
+				std::this_thread::sleep_for(sleepingTime);
+				if(_stopWorkerThread || _shuttingDown) return;
+				// Update devices (most importantly the IP address)
+				if(counter > countsPer10Minutes)
+				{
+					countsPer10Minutes = 600;
+					counter = 0;
+					searchInterfaces(nullptr, nullptr);
+				}
+				counter++;
+			}
+			catch(const std::exception& ex)
+			{
+				GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+			}
+			catch(BaseLib::Exception& ex)
+			{
+				GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+			}
+			catch(...)
+			{
+				GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+			}
 		}
 	}
 	catch(const std::exception& ex)
@@ -109,14 +175,13 @@ void MyCentral::loadPeers()
 		for(BaseLib::Database::DataTable::iterator row = rows->begin(); row != rows->end(); ++row)
 		{
 			int32_t peerID = row->second.at(0)->intValue;
-			GD::out.printMessage("Loading EnOcean peer " + std::to_string(peerID));
+			GD::out.printMessage("Loading CCU2 peer " + std::to_string(peerID));
 			std::shared_ptr<MyPeer> peer(new MyPeer(peerID, row->second.at(2)->intValue, row->second.at(3)->textValue, _deviceId, this));
 			if(!peer->load(this)) continue;
 			if(!peer->getRpcDevice()) continue;
 			std::lock_guard<std::mutex> peersGuard(_peersMutex);
 			if(!peer->getSerialNumber().empty()) _peersBySerial[peer->getSerialNumber()] = peer;
 			_peersById[peerID] = peer;
-			_peers[peer->getAddress()] = peer;
 		}
 	}
 	catch(const std::exception& ex)
@@ -141,32 +206,6 @@ std::shared_ptr<MyPeer> MyCentral::getPeer(uint64_t id)
 		if(_peersById.find(id) != _peersById.end())
 		{
 			std::shared_ptr<MyPeer> peer(std::dynamic_pointer_cast<MyPeer>(_peersById.at(id)));
-			return peer;
-		}
-	}
-	catch(const std::exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
-    return std::shared_ptr<MyPeer>();
-}
-
-std::shared_ptr<MyPeer> MyCentral::getPeer(int32_t address)
-{
-	try
-	{
-		std::lock_guard<std::mutex> peersGuard(_peersMutex);
-		if(_peers.find(address) != _peers.end())
-		{
-			std::shared_ptr<MyPeer> peer(std::dynamic_pointer_cast<MyPeer>(_peers.at(address)));
 			return peer;
 		}
 	}
@@ -219,14 +258,40 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
 		PMyPacket myPacket(std::dynamic_pointer_cast<MyPacket>(packet));
 		if(!myPacket) return false;
 
-		if(_bl->debugLevel >= 4) std::cout << BaseLib::HelperFunctions::getTimeString(myPacket->timeReceived()) << " Packet received (" << senderId << std::string(", RSSI: ") + std::to_string(myPacket->getRssi()) + " dBm" << "): " << myPacket->hexString() << " - Sender address: 0x" << BaseLib::HelperFunctions::getHexString(myPacket->senderAddress(), 8) << std::endl;
+		if(_bl->debugLevel >= 4) std::cout << BaseLib::HelperFunctions::getTimeString(myPacket->timeReceived()) << " Packet received (" << senderId << "): Method name: " << myPacket->getMethodName() << std::endl;
 
-		PMyPeer peer = getPeer(myPacket->senderAddress());
-		if(!peer) return false;
-		if(senderId != peer->getPhysicalInterfaceId()) return false;
+        if(myPacket->getMethodName() == "newDevices")
+        {
+            if(_pairing)
+            {
+                auto parameters = myPacket->getParameters();
+                if(parameters->size() < 2) return false;
+                for(auto& description : *parameters->at(1)->arrayValue)
+                {
+                    auto addressIterator = description->structValue->find("ADDRESS");
+                    if(addressIterator == description->structValue->end()) continue;
+                    std::string serialNumber = addressIterator->second->stringValue;
+                    BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
+                    if(serialNumber.find(':') != std::string::npos) continue;
+                    pairDevice(senderId, serialNumber);
+                }
+                return true;
+            }
+            return false;
+        }
 
-		peer->packetReceived(myPacket);
-		return true;
+        if(myPacket->getMethodName() == "event")
+        {
+            auto addressPair = BaseLib::HelperFunctions::splitFirst(myPacket->getParameters()->at(1)->stringValue, ':');
+            std::string serialNumber = addressPair.first;
+
+            PMyPeer peer = getPeer(serialNumber);
+            if(!peer) return false;
+            if(senderId != peer->getPhysicalInterfaceId()) return false;
+
+            peer->packetReceived(myPacket);
+            return true;
+        }
 	}
 	catch(const std::exception& ex)
     {
@@ -243,6 +308,78 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
     return false;
 }
 
+void MyCentral::pairDevice(std::string& interfaceId, std::string& serialNumber)
+{
+    try
+    {
+        std::lock_guard<std::mutex> pairGuard(_pairMutex);
+        GD::out.printInfo("Info: Adding device " + serialNumber + "...");
+
+        uint64_t peerToDelete = 0;
+		uint32_t peerToDeleteType = 0;
+        {
+            std::lock_guard<std::mutex> peersGuard(_peersMutex);
+            auto peersIterator = _peersBySerial.find(serialNumber);
+            if(peersIterator != _peersBySerial.end())
+            {
+                peerToDelete = peersIterator->second->getID();
+				peerToDeleteType = peersIterator->second->getDeviceType();
+            }
+        }
+
+        if(peerToDelete != 0)
+        {
+            GD::out.printInfo("Info: Deleting old peer.");
+            deletePeer(peerToDelete);
+        }
+
+		auto knownTypeIds = GD::family->getRpcDevices()->getKnownTypeNumbers();
+        auto peerInfo = _descriptionCreator.createDescription(interfaceId, serialNumber, peerToDeleteType, knownTypeIds);
+        if(peerInfo.serialNumber.empty()) return; //Error
+        GD::family->reloadRpcDevices();
+
+        PMyPeer peer = createPeer(peerInfo.type, peerInfo.firmwareVersion, peerInfo.serialNumber, true);
+        if(!peer)
+        {
+            GD::out.printError("Error: Could not add device with type " + BaseLib::HelperFunctions::getHexString(peerInfo.type) + ". No matching XML file was found.");
+            return;
+        }
+
+        if(peerToDelete != 0 && peerToDelete != peer->getID()) peer->setId(nullptr, peerToDelete);
+        peer->initializeCentralConfig();
+        peer->setPhysicalInterfaceId(interfaceId);
+
+        {
+            std::lock_guard<std::mutex> peersGuard(_peersMutex);
+            _peersBySerial[peer->getSerialNumber()] = peer;
+            _peersById[peer->getID()] = peer;
+        }
+
+        GD::out.printInfo("Info: Device successfully added. Peer ID is: " + std::to_string(peer->getID()));
+
+        PVariable deviceDescriptions(new Variable(VariableType::tArray));
+        std::shared_ptr<std::vector<PVariable>> descriptions = peer->getDeviceDescriptions(nullptr, true, std::map<std::string, bool>());
+        if(!descriptions) return;
+        for(std::vector<PVariable>::iterator j = descriptions->begin(); j != descriptions->end(); ++j)
+        {
+            deviceDescriptions->arrayValue->push_back(*j);
+        }
+        raiseRPCNewDevices(deviceDescriptions);
+    }
+    catch(const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+}
+
 void MyCentral::savePeers(bool full)
 {
 	try
@@ -250,7 +387,7 @@ void MyCentral::savePeers(bool full)
 		std::lock_guard<std::mutex> peersGuard(_peersMutex);
 		for(std::map<uint64_t, std::shared_ptr<BaseLib::Systems::Peer>>::iterator i = _peersById.begin(); i != _peersById.end(); ++i)
 		{
-			GD::out.printInfo("Info: Saving EnOcean peer " + std::to_string(i->second->getID()));
+			GD::out.printInfo("Info: Saving CCU2 peer " + std::to_string(i->second->getID()));
 			i->second->save(full, full, full);
 		}
 	}
@@ -292,27 +429,24 @@ void MyCentral::deletePeer(uint64_t id)
 		raiseRPCDeleteDevices(deviceAddresses, deviceInfo);
 		peer->deleteFromDatabase();
 
-		_peersMutex.lock();
-		if(_peersBySerial.find(peer->getSerialNumber()) != _peersBySerial.end()) _peersBySerial.erase(peer->getSerialNumber());
-		if(_peersById.find(id) != _peersById.end()) _peersById.erase(id);
-		std::unordered_map<int32_t, std::shared_ptr<BaseLib::Systems::Peer>>::iterator peerIterator = _peers.find(peer->getAddress());
-		if(peerIterator != _peers.end() && peerIterator->second->getID() == id) _peers.erase(peerIterator);
-		_peersMutex.unlock();
-		GD::out.printMessage("Removed EnOcean peer " + std::to_string(peer->getID()));
+        {
+            std::lock_guard<std::mutex> peersGuard(_peersMutex);
+            if(_peersBySerial.find(peer->getSerialNumber()) != _peersBySerial.end()) _peersBySerial.erase(peer->getSerialNumber());
+            if(_peersById.find(id) != _peersById.end()) _peersById.erase(id);
+        }
+
+		GD::out.printMessage("Removed CCU2 peer " + std::to_string(peer->getID()));
 	}
 	catch(const std::exception& ex)
     {
-		_peersMutex.unlock();
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
     catch(BaseLib::Exception& ex)
     {
-    	_peersMutex.unlock();
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
     catch(...)
     {
-    	_peersMutex.unlock();
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
 }
@@ -337,16 +471,46 @@ std::string MyCentral::handleCliCommand(std::string command)
 		{
 			stringStream << "List of commands:" << std::endl << std::endl;
 			stringStream << "For more information about the individual command type: COMMAND help" << std::endl << std::endl;
+			stringStream << "search              Searches and adds CCUs" << std::endl;
 			stringStream << "pairing on (pon)    Enables pairing mode" << std::endl;
 			stringStream << "pairing off (pof)   Disables pairing mode" << std::endl;
-			stringStream << "peers create (pc)   Creates a new peer" << std::endl;
 			stringStream << "peers list (ls)     List all peers" << std::endl;
 			stringStream << "peers remove (pr)   Remove a peer" << std::endl;
+            stringStream << "peers reset (prs)   Unpair a peer and reset it to factory defaults" << std::endl;
+            stringStream << "peers search        Searches for new peers" << std::endl;
 			stringStream << "peers select (ps)   Select a peer" << std::endl;
 			stringStream << "peers setname (pn)  Name a peer" << std::endl;
 			stringStream << "unselect (u)        Unselect this device" << std::endl;
 			return stringStream.str();
 		}
+		else if(BaseLib::HelperFunctions::checkCliCommand(command, "search", "", "", 0, arguments, showHelp))
+		{
+			if(showHelp)
+			{
+				stringStream << "Description: This command searches for and adds CCUs." << std::endl;
+				stringStream << "Usage: search" << std::endl << std::endl;
+				return stringStream.str();
+			}
+
+			searchInterfaces(nullptr, nullptr);
+
+			stringStream << "Search completed." << std::endl;
+			return stringStream.str();
+		}
+        else if(BaseLib::HelperFunctions::checkCliCommand(command, "peers search", "", "", 0, arguments, showHelp))
+        {
+            if(showHelp)
+            {
+                stringStream << "Description: This command searches for new peers paired to the connected CCUs." << std::endl;
+                stringStream << "Usage: peers search" << std::endl << std::endl;
+                return stringStream.str();
+            }
+
+            searchDevices(nullptr);
+
+            stringStream << "Search completed." << std::endl;
+            return stringStream.str();
+        }
 		else if(BaseLib::HelperFunctions::checkCliCommand(command, "pairing on", "pon", "", 0, arguments, showHelp))
 		{
 			if(showHelp)
@@ -384,68 +548,6 @@ std::string MyCentral::handleCliCommand(std::string command)
 			stringStream << "Pairing mode disabled." << std::endl;
 			return stringStream.str();
 		}
-		else if(BaseLib::HelperFunctions::checkCliCommand(command, "peers create", "pc", "", 3, arguments, showHelp))
-		{
-			if(showHelp)
-			{
-				stringStream << "Description: This command creates a new peer." << std::endl;
-				stringStream << "Usage: peers create INTERFACE TYPE ADDRESS" << std::endl << std::endl;
-				stringStream << "Parameters:" << std::endl;
-				stringStream << "  INTERFACE: The id of the interface to associate the new device to as defined in the familie's configuration file." << std::endl;
-				stringStream << "  TYPE:      The 3 or 4 byte hexadecimal device type (for most devices the EEP number). Example: 0xF60201" << std::endl;
-				stringStream << "  ADDRESS:   The 4 byte address/ID printed on the device. Example: 0x01952B7A" << std::endl;
-				return stringStream.str();
-			}
-
-			std::string interfaceId = arguments.at(0);
-			if(GD::physicalInterfaces.find(interfaceId) == GD::physicalInterfaces.end()) return "Unknown physical interface.\n";
-			int32_t deviceType = BaseLib::Math::getNumber(arguments.at(1), true);
-			if(deviceType == 0) return "Invalid device type. Device type has to be provided in hexadecimal format.\n";
-			int32_t address = BaseLib::Math::getNumber(arguments.at(2), true);
-			std::string serial = "EOD" + BaseLib::HelperFunctions::getHexString(address, 8);
-
-			if(peerExists(serial) || peerExists(address)) stringStream << "A peer with this address is already paired to this central." << std::endl;
-			else
-			{
-				std::shared_ptr<MyPeer> peer = createPeer(deviceType, address, serial, false);
-				if(!peer || !peer->getRpcDevice()) return "Device type not supported.\n";
-				try
-				{
-					_peersMutex.lock();
-					if(!peer->getSerialNumber().empty()) _peersBySerial[peer->getSerialNumber()] = peer;
-					_peersMutex.unlock();
-					peer->save(true, true, false);
-					peer->initializeCentralConfig();
-					peer->setPhysicalInterfaceId(interfaceId);
-					_peersMutex.lock();
-					_peers[peer->getAddress()] = peer;
-					_peersById[peer->getID()] = peer;
-					_peersMutex.unlock();
-				}
-				catch(const std::exception& ex)
-				{
-					_peersMutex.unlock();
-					GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-				}
-				catch(BaseLib::Exception& ex)
-				{
-					_peersMutex.unlock();
-					GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-				}
-				catch(...)
-				{
-					_peersMutex.unlock();
-					GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-				}
-
-				PVariable deviceDescriptions(new Variable(VariableType::tArray));
-				deviceDescriptions->arrayValue = peer->getDeviceDescriptions(nullptr, true, std::map<std::string, bool>());
-				raiseRPCNewDevices(deviceDescriptions);
-				GD::out.printMessage("Added peer " + std::to_string(peer->getID()) + ".");
-				stringStream << "Added peer " << std::to_string(peer->getID()) << " with address 0x" << BaseLib::HelperFunctions::getHexString(peer->getAddress(), 8) << " and serial number " << serial << "." << std::dec << std::endl;
-			}
-			return stringStream.str();
-		}
 		else if(BaseLib::HelperFunctions::checkCliCommand(command, "peers remove", "pr", "prm", 1, arguments, showHelp))
 		{
 			if(showHelp)
@@ -469,6 +571,29 @@ std::string MyCentral::handleCliCommand(std::string command)
 			}
 			return stringStream.str();
 		}
+        else if(BaseLib::HelperFunctions::checkCliCommand(command, "peers reset", "prs", "", 1, arguments, showHelp))
+        {
+            if(showHelp)
+            {
+                stringStream << "Description: This command unpairs a peer and resets it to factory defaults." << std::endl;
+                stringStream << "Usage: peers reset PEERID" << std::endl << std::endl;
+                stringStream << "Parameters:" << std::endl;
+                stringStream << "  PEERID: The id of the peer to reset. Example: 513" << std::endl;
+                return stringStream.str();
+            }
+
+            uint64_t peerID = BaseLib::Math::getNumber(arguments.at(0), false);
+            if(peerID == 0) return "Invalid id.\n";
+
+            if(!peerExists(peerID)) stringStream << "This peer is not paired to this central." << std::endl;
+            else
+            {
+                if(_currentPeer && _currentPeer->getID() == peerID) _currentPeer.reset();
+                stringStream << "Removing peer " << std::to_string(peerID) << std::endl;
+                deleteDevice(nullptr, peerID, 1);
+            }
+            return stringStream.str();
+        }
 		else if(BaseLib::HelperFunctions::checkCliCommand(command, "peers list", "pl", "ls", 0, arguments, showHelp))
 		{
 			try
@@ -485,8 +610,6 @@ std::string MyCentral::handleCliCommand(std::string command)
 					stringStream << "      FILTERVALUE: The id of the peer to filter (e. g. 513)." << std::endl;
 					stringStream << "  SERIAL: Filter by serial number." << std::endl;
 					stringStream << "      FILTERVALUE: The serial number of the peer to filter (e. g. JEQ0554309)." << std::endl;
-					stringStream << "  ADDRESS: Filter by saddress." << std::endl;
-					stringStream << "      FILTERVALUE: The address of the peer to filter (e. g. 128)." << std::endl;
 					stringStream << "  NAME: Filter by name." << std::endl;
 					stringStream << "      FILTERVALUE: The part of the name to search for (e. g. \"1st floor\")." << std::endl;
 					stringStream << "  TYPE: Filter by device type." << std::endl;
@@ -513,7 +636,6 @@ std::string MyCentral::handleCliCommand(std::string command)
 				const int32_t idWidth = 8;
 				const int32_t nameWidth = 25;
 				const int32_t serialWidth = 13;
-				const int32_t addressWidth = 8;
 				const int32_t typeWidth1 = 8;
 				const int32_t typeWidth2 = 45;
 				std::string nameHeader("Name");
@@ -524,16 +646,14 @@ std::string MyCentral::handleCliCommand(std::string command)
 					<< std::setw(idWidth) << "ID" << bar
 					<< nameHeader << bar
 					<< std::setw(serialWidth) << "Serial Number" << bar
-					<< std::setw(addressWidth) << "Address" << bar
 					<< std::setw(typeWidth1) << "Type" << bar
 					<< typeStringHeader
 					<< std::endl;
-				stringStream << "─────────┼───────────────────────────┼───────────────┼──────────┼──────────┼───────────────────────────────────────────────" << std::endl;
+				stringStream << "─────────┼───────────────────────────┼───────────────┼──────────┼───────────────────────────────────────────────" << std::endl;
 				stringStream << std::setfill(' ')
 					<< std::setw(idWidth) << " " << bar
 					<< std::setw(nameWidth) << " " << bar
 					<< std::setw(serialWidth) << " " << bar
-					<< std::setw(addressWidth) << " " << bar
 					<< std::setw(typeWidth1) << " " << bar
 					<< std::setw(typeWidth2)
 					<< std::endl;
@@ -554,11 +674,6 @@ std::string MyCentral::handleCliCommand(std::string command)
 					{
 						if(i->second->getSerialNumber() != filterValue) continue;
 					}
-					else if(filterType == "address")
-					{
-						int32_t address = BaseLib::Math::getNumber(filterValue, true);
-						if(i->second->getAddress() != address) continue;
-					}
 					else if(filterType == "type")
 					{
 						int32_t deviceType = BaseLib::Math::getNumber(filterValue, true);
@@ -576,7 +691,6 @@ std::string MyCentral::handleCliCommand(std::string command)
 					else name.resize(nameWidth + (name.size() - nameSize), ' ');
 					stringStream << name << bar
 						<< std::setw(serialWidth) << i->second->getSerialNumber() << bar
-						<< std::setw(addressWidth) << BaseLib::HelperFunctions::getHexString(i->second->getAddress(), 8) << bar
 						<< std::setw(typeWidth1) << BaseLib::HelperFunctions::getHexString(i->second->getDeviceType(), 6) << bar;
 					if(i->second->getRpcDevice())
 					{
@@ -595,7 +709,7 @@ std::string MyCentral::handleCliCommand(std::string command)
 					stringStream << std::endl << std::dec;
 				}
 				_peersMutex.unlock();
-				stringStream << "─────────┴───────────────────────────┴───────────────┴──────────┴──────────┴───────────────────────────────────────────────" << std::endl;
+				stringStream << "─────────┴───────────────────────────┴───────────────┴──────────┴───────────────────────────────────────────────" << std::endl;
 
 				return stringStream.str();
 			}
@@ -704,6 +818,12 @@ std::string MyCentral::handleCliCommand(std::string command)
 			}
 			return stringStream.str();
 		}
+        else if(BaseLib::HelperFunctions::checkCliCommand(command, "test", "", "", 0, arguments, showHelp))
+        {
+            BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
+            stringStream << GD::interfaces->getDefaultInterface()->invoke("logLevel", parameters)->print(false, false) << std::endl;
+            return stringStream.str();
+        }
 		else return "Unknown command.\n";
 	}
 	catch(const std::exception& ex)
@@ -721,30 +841,29 @@ std::string MyCentral::handleCliCommand(std::string command)
     return "Error executing command. See log file for more details.\n";
 }
 
-std::shared_ptr<MyPeer> MyCentral::createPeer(uint32_t deviceType, int32_t address, std::string serialNumber, bool save)
+std::shared_ptr<MyPeer> MyCentral::createPeer(uint32_t deviceType, int32_t firmwareVersion, std::string serialNumber, bool save)
 {
-	try
-	{
-		std::shared_ptr<MyPeer> peer(new MyPeer(_deviceId, this));
-		peer->setDeviceType(deviceType);
-		peer->setAddress(address);
-		peer->setSerialNumber(serialNumber);
-		peer->setRpcDevice(GD::family->getRpcDevices()->find(deviceType, 0x10, -1));
-		if(!peer->getRpcDevice()) return std::shared_ptr<MyPeer>();
-		if(save) peer->save(true, true, false); //Save and create peerID
-		return peer;
-	}
+    try
+    {
+        std::shared_ptr<MyPeer> peer(new MyPeer(_deviceId, this));
+        peer->setDeviceType(deviceType);
+        peer->setSerialNumber(serialNumber);
+        peer->setRpcDevice(GD::family->getRpcDevices()->find(deviceType, firmwareVersion, -1));
+        if(!peer->getRpcDevice()) return std::shared_ptr<MyPeer>();
+        if(save) peer->save(true, true, false); //Save and create peerID
+        return peer;
+    }
     catch(const std::exception& ex)
     {
-    	GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
     catch(BaseLib::Exception& ex)
     {
-    	GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
     catch(...)
     {
-    	GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return std::shared_ptr<MyPeer>();
 }
@@ -841,6 +960,18 @@ PVariable MyCentral::deleteDevice(BaseLib::PRpcClientInfo clientInfo, uint64_t p
 		std::shared_ptr<MyPeer> peer = getPeer(peerID);
 		if(!peer) return PVariable(new Variable(VariableType::tVoid));
 		uint64_t id = peer->getID();
+
+        std::string interfaceId = peer->getPhysicalInterfaceId();
+        auto interface = GD::interfaces->getInterface(interfaceId);
+        if(interface)
+        {
+            PArray parameters = std::make_shared<Array>();
+            parameters->reserve(2);
+            parameters->push_back(std::make_shared<Variable>(peer->getSerialNumber()));
+            parameters->push_back(std::make_shared<Variable>(flags));
+            auto result = interface->invoke("deleteDevice", parameters);
+            if(result->errorStruct) GD::out.printError("Error calling deleteDevice on CCU: " + result->structValue->at("faultString")->stringValue);
+        }
 
 		deletePeer(id);
 
@@ -971,7 +1102,29 @@ PVariable MyCentral::searchDevices(BaseLib::PRpcClientInfo clientInfo)
 {
 	try
 	{
+        auto interfaces = GD::interfaces->getInterfaces();
+        for(auto& interface : interfaces)
+        {
+            std::string methodName("listDevices");
+            BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
+            auto result = interface->invoke(methodName, parameters);
+            if(result->errorStruct)
+            {
+                GD::out.printWarning("Warning: Error calling listDevices on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
+                continue;
+            }
 
+            for(auto& description : *result->arrayValue)
+            {
+                auto addressIterator = description->structValue->find("ADDRESS");
+                if(addressIterator == description->structValue->end()) continue;
+                std::string serialNumber = addressIterator->second->stringValue;
+                BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
+                if(serialNumber.find(':') != std::string::npos) continue;
+                std::string interfaceId = interface->getID();
+                pairDevice(interfaceId, serialNumber);
+            }
+        }
 	}
 	catch(const std::exception& ex)
 	{
@@ -993,149 +1146,175 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
 	PFileDescriptor serverSocketDescriptor;
 	try
 	{
-		serverSocketDescriptor = _bl->fileDescriptorManager.add(socket(AF_INET, SOCK_DGRAM, 0));
-		if(serverSocketDescriptor->descriptor == -1)
-		{
-			_bl->out.printError("Error: Could not create socket.");
-			return Variable::createError(-1, "Could not create socket.");
-		}
+        //{{{ UDP search
+            serverSocketDescriptor = _bl->fileDescriptorManager.add(socket(AF_INET, SOCK_DGRAM, 0));
+            if(serverSocketDescriptor->descriptor == -1)
+            {
+                _bl->out.printError("Error: Could not create socket.");
+                return Variable::createError(-1, "Could not create socket.");
+            }
 
-		int32_t reuse = 1;
-		if(setsockopt(serverSocketDescriptor->descriptor, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) == -1)
-		{
-			_bl->out.printWarning("Warning: Could set socket options: " + std::string(strerror(errno)));
-		}
+            int32_t reuse = 1;
+            if(setsockopt(serverSocketDescriptor->descriptor, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) == -1)
+            {
+                _bl->out.printWarning("Warning: Could set socket options: " + std::string(strerror(errno)));
+            }
 
-        char loopch = 0;
-        if(setsockopt(serverSocketDescriptor->descriptor, IPPROTO_IP, IP_MULTICAST_LOOP, (char *)&loopch, sizeof(loopch)) == -1)
-        {
-            _bl->out.printWarning("Warning: Could set socket options: " + std::string(strerror(errno)));
-        }
+            char loopch = 0;
+            if(setsockopt(serverSocketDescriptor->descriptor, IPPROTO_IP, IP_MULTICAST_LOOP, (char *)&loopch, sizeof(loopch)) == -1)
+            {
+                _bl->out.printWarning("Warning: Could set socket options: " + std::string(strerror(errno)));
+            }
 
-		struct in_addr localInterface;
-		localInterface.s_addr = inet_addr("0.0.0.0");
-		if(setsockopt(serverSocketDescriptor->descriptor, IPPROTO_IP, IP_MULTICAST_IF, (char *)&localInterface, sizeof(localInterface)) == -1)
-		{
-			_bl->out.printWarning("Warning: Could set socket options: " + std::string(strerror(errno)));
-		}
+            struct in_addr localInterface;
+            localInterface.s_addr = inet_addr("0.0.0.0");
+            if(setsockopt(serverSocketDescriptor->descriptor, IPPROTO_IP, IP_MULTICAST_IF, (char *)&localInterface, sizeof(localInterface)) == -1)
+            {
+                _bl->out.printWarning("Warning: Could set socket options: " + std::string(strerror(errno)));
+            }
 
-		struct sockaddr_in localSock;
-		memset((char *) &localSock, 0, sizeof(localSock));
-		localSock.sin_family = AF_INET;
-		localSock.sin_port = 0;
-		localSock.sin_addr.s_addr = inet_addr("239.255.255.250");
+            struct sockaddr_in localSock;
+            memset((char *) &localSock, 0, sizeof(localSock));
+            localSock.sin_family = AF_INET;
+            localSock.sin_port = 0;
+            localSock.sin_addr.s_addr = inet_addr("239.255.255.250");
 
-		if(bind(serverSocketDescriptor->descriptor, (struct sockaddr*)&localSock, sizeof(localSock)) == -1)
-		{
-			_bl->out.printError("Error: Binding failed: " + std::string(strerror(errno)));
-			_bl->fileDescriptorManager.close(serverSocketDescriptor);
-			return Variable::createError(-2, "Binding failed.");
-		}
+            if(bind(serverSocketDescriptor->descriptor, (struct sockaddr*)&localSock, sizeof(localSock)) == -1)
+            {
+                _bl->out.printError("Error: Binding failed: " + std::string(strerror(errno)));
+                _bl->fileDescriptorManager.close(serverSocketDescriptor);
+                return Variable::createError(-2, "Binding failed.");
+            }
 
-		struct sockaddr_in addessInfo;
-		addessInfo.sin_family = AF_INET;
-		addessInfo.sin_addr.s_addr = inet_addr("239.255.255.250");
-		addessInfo.sin_port = htons(43439);
+            struct sockaddr_in addessInfo;
+            addessInfo.sin_family = AF_INET;
+            addessInfo.sin_addr.s_addr = inet_addr("239.255.255.250");
+            addessInfo.sin_port = htons(43439);
 
-		std::vector<uint8_t> broadcastPacket{2, 0xBE, 0x41, 0xD8, 1, 0x65, 0x51, 0x33, 0x2D, 0x2A, 0, 0x2A, 0, 0x49};
-		if(sendto(serverSocketDescriptor->descriptor, (char*)broadcastPacket.data(), broadcastPacket.size(), 0, (struct sockaddr*)&addessInfo, sizeof(addessInfo)) == -1)
-		{
-			_bl->out.printWarning("Warning: Could send SSDP search broadcast packet: " + std::string(strerror(errno)));
-		}
+            std::vector<uint8_t> broadcastPacket{2, 0xBE, 0x41, 0xD8, 1, 0x65, 0x51, 0x33, 0x2D, 0x2A, 0, 0x2A, 0, 0x49};
+            if(sendto(serverSocketDescriptor->descriptor, (char*)broadcastPacket.data(), broadcastPacket.size(), 0, (struct sockaddr*)&addessInfo, sizeof(addessInfo)) == -1)
+            {
+                _bl->out.printWarning("Warning: Could send SSDP search broadcast packet: " + std::string(strerror(errno)));
+            }
 
-		uint64_t startTime = _bl->hf.getTime();
-		char buffer[1024];
-		int32_t bytesReceived = 0;
-		struct sockaddr info{};
-		socklen_t slen = sizeof(info);
-		fd_set readFileDescriptor;
-		timeval socketTimeout;
-		int32_t nfds = 0;
-		std::vector<uint8_t> expectedResponse{2, 0xBE, 0x41, 0xD8, 1};
-		while(_bl->hf.getTime() - startTime <= 5000)
-		{
-			try
-			{
-				if(!serverSocketDescriptor || serverSocketDescriptor->descriptor == -1) break;
+            uint64_t startTime = _bl->hf.getTime();
+            char buffer[1024];
+            int32_t bytesReceived = 0;
+            struct sockaddr info{};
+            socklen_t slen = sizeof(info);
+            fd_set readFileDescriptor;
+            timeval socketTimeout;
+            int32_t nfds = 0;
+            std::vector<uint8_t> expectedResponse{2, 0xBE, 0x41, 0xD8, 1};
+            std::set<std::string> foundInterfaces;
+            while(_bl->hf.getTime() - startTime <= 5000)
+            {
+                try
+                {
+                    if(!serverSocketDescriptor || serverSocketDescriptor->descriptor == -1) break;
 
-				socketTimeout.tv_sec = 0;
-				socketTimeout.tv_usec = 100000;
-				FD_ZERO(&readFileDescriptor);
-				auto fileDescriptorGuard = _bl->fileDescriptorManager.getLock();
-				fileDescriptorGuard.lock();
-				nfds = serverSocketDescriptor->descriptor + 1;
-				if(nfds <= 0)
-				{
-					fileDescriptorGuard.unlock();
-					_bl->out.printError("Error: Socket closed (1).");
-					_bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
-					continue;
-				}
-				FD_SET(serverSocketDescriptor->descriptor, &readFileDescriptor);
-				fileDescriptorGuard.unlock();
-				bytesReceived = select(nfds, &readFileDescriptor, NULL, NULL, &socketTimeout);
-				if(bytesReceived == 0) continue;
-				if(bytesReceived != 1)
-				{
-					_bl->out.printError("Error: Socket closed (2).");
-					_bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
-					continue;
-				}
+                    socketTimeout.tv_sec = 0;
+                    socketTimeout.tv_usec = 100000;
+                    FD_ZERO(&readFileDescriptor);
+                    auto fileDescriptorGuard = _bl->fileDescriptorManager.getLock();
+                    fileDescriptorGuard.lock();
+                    nfds = serverSocketDescriptor->descriptor + 1;
+                    if(nfds <= 0)
+                    {
+                        fileDescriptorGuard.unlock();
+                        _bl->out.printError("Error: Socket closed (1).");
+                        _bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
+                        continue;
+                    }
+                    FD_SET(serverSocketDescriptor->descriptor, &readFileDescriptor);
+                    fileDescriptorGuard.unlock();
+                    bytesReceived = select(nfds, &readFileDescriptor, NULL, NULL, &socketTimeout);
+                    if(bytesReceived == 0) continue;
+                    if(bytesReceived != 1)
+                    {
+                        _bl->out.printError("Error: Socket closed (2).");
+                        _bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
+                        continue;
+                    }
 
-				bytesReceived = recvfrom(serverSocketDescriptor->descriptor, buffer, 1024, 0, &info, &slen);
-				if(bytesReceived == 0 || info.sa_family != AF_INET) continue;
-				else if(bytesReceived == -1)
-				{
-					_bl->out.printError("Error: Socket closed (3).");
-					_bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
-					continue;
-				}
-				if(_bl->debugLevel >= 5) _bl->out.printDebug("Debug: Response received:\n" + std::string(buffer, bytesReceived));
-				std::vector<uint8_t> responseStart(buffer, buffer + 5);
-				if(responseStart == expectedResponse)
-				{
-					char* pos = (char*)memchr(buffer + 5, 0, bytesReceived - 5);
-					if(pos)
-					{
-						std::string device(buffer + 5, pos - (buffer + 5));
-						if(device == "eQ3-HM-CCU2-App")
-						{
-							pos = (char*)memchr(buffer + 5 + device.size() + 1, 0, bytesReceived - 5 - device.size() - 1);
-							if(pos)
-							{
-								std::string serial(buffer + 5 + device.size() + 1, pos - (buffer + 5 + device.size() + 1));
+                    bytesReceived = recvfrom(serverSocketDescriptor->descriptor, buffer, 1024, 0, &info, &slen);
+                    if(bytesReceived == 0 || info.sa_family != AF_INET) continue;
+                    else if(bytesReceived == -1)
+                    {
+                        _bl->out.printError("Error: Socket closed (3).");
+                        _bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
+                        continue;
+                    }
+                    if(_bl->debugLevel >= 5) _bl->out.printDebug("Debug: Response received:\n" + std::string(buffer, bytesReceived));
+                    std::vector<uint8_t> responseStart(buffer, buffer + 5);
+                    if(responseStart == expectedResponse)
+                    {
+                        char* pos = (char*)memchr(buffer + 5, 0, bytesReceived - 5);
+                        if(pos)
+                        {
+                            std::string device(buffer + 5, pos - (buffer + 5));
+                            if(device == "eQ3-HM-CCU2-App")
+                            {
+                                pos = (char*)memchr(buffer + 5 + device.size() + 1, 0, bytesReceived - 5 - device.size() - 1);
+                                if(pos)
+                                {
+                                    std::string serial(buffer + 5 + device.size() + 1, pos - (buffer + 5 + device.size() + 1));
+                                    serial = BaseLib::HelperFunctions::stripNonAlphaNumeric(serial);
 
-								pos = (char*)memchr(buffer + 5 + device.size() + 1 + serial.size() + 4, 0, bytesReceived - 5 - device.size() - 1 - serial.size() - 4);
-								if(pos)
-								{
-									std::string version(buffer + 5 + device.size() + 1 + serial.size() + 4, pos - (buffer + 5 + device.size() + 1 + serial.size() + 4));
+                                    pos = (char*)memchr(buffer + 5 + device.size() + 1 + serial.size() + 4, 0, bytesReceived - 5 - device.size() - 1 - serial.size() - 4);
+                                    if(pos)
+                                    {
+                                        std::string version(buffer + 5 + device.size() + 1 + serial.size() + 4, pos - (buffer + 5 + device.size() + 1 + serial.size() + 4));
 
-									struct sockaddr_in *s = (struct sockaddr_in*)&info;
-									char ipStringBuffer[INET6_ADDRSTRLEN];
-									inet_ntop(AF_INET, &s->sin_addr, ipStringBuffer, sizeof(ipStringBuffer));
-									std::string senderIp(ipStringBuffer);
-									std::cout << "Moin." << device << "." << serial << "." << version << "." << senderIp << "." << std::endl;
-								}
-							}
-						}
-					}
-				}
-			}
-			catch(const std::exception& ex)
-			{
-				_bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-			}
-			catch(Exception& ex)
-			{
-				_bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-			}
-			catch(...)
-			{
-				_bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-			}
-		}
+                                        struct sockaddr_in *s = (struct sockaddr_in*)&info;
+                                        char ipStringBuffer[INET6_ADDRSTRLEN];
+                                        inet_ntop(AF_INET, &s->sin_addr, ipStringBuffer, sizeof(ipStringBuffer));
+                                        std::string senderIp(ipStringBuffer);
 
-		_bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
+                                        if(serial.empty() || senderIp.empty()) continue;
+                                        auto interface = GD::interfaces->getInterface(serial);
+                                        if(interface && interface->getHostname() == senderIp) continue;
+
+                                        Systems::PPhysicalInterfaceSettings settings = std::make_shared<Systems::PhysicalInterfaceSettings>();
+                                        settings->id = serial;
+                                        settings->type = "ccu2-auto";
+                                        settings->host = senderIp;
+                                        settings->port = "2001";
+
+                                        foundInterfaces.emplace(serial);
+
+                                        std::shared_ptr<Ccu2> newInterface = GD::interfaces->addInterface(settings, true);
+                                        if(newInterface)
+                                        {
+                                            GD::out.printInfo("Info: Found new CCU2 with IP address " + senderIp + " and serial number " + settings->id + ".");
+                                            newInterface->startListening();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch(const std::exception& ex)
+                {
+                    _bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+                }
+                catch(Exception& ex)
+                {
+                    _bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+                }
+                catch(...)
+                {
+                    _bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+                }
+            }
+
+            _bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
+        //}}}
+
+        if(!foundInterfaces.empty()) GD::interfaces->addEventHandlers((BaseLib::Systems::IPhysicalInterface::IPhysicalInterfaceEventSink*)this);
+        GD::interfaces->removeUnknownInterfaces(foundInterfaces);
+
 		return std::make_shared<Variable>();
 	}
 	catch(const std::exception& ex)
@@ -1152,6 +1331,87 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
 	}
 	_bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
 	return Variable::createError(-32500, "Unknown application error.");
+}
+
+void MyCentral::pairingModeTimer(int32_t duration, bool debugOutput)
+{
+    try
+    {
+        _pairing = true;
+        if(debugOutput) GD::out.printInfo("Info: Pairing mode enabled.");
+        _timeLeftInPairingMode = duration;
+        int64_t startTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        int64_t timePassed = 0;
+        while(timePassed < ((int64_t)duration * 1000) && !_stopPairingModeThread)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+            timePassed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() - startTime;
+            _timeLeftInPairingMode = duration - (timePassed / 1000);
+        }
+        _timeLeftInPairingMode = 0;
+        _pairing = false;
+        if(debugOutput) GD::out.printInfo("Info: Pairing mode disabled.");
+    }
+    catch(const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+}
+
+std::shared_ptr<Variable> MyCentral::setInstallMode(BaseLib::PRpcClientInfo clientInfo, bool on, uint32_t duration, BaseLib::PVariable metadata, bool debugOutput)
+{
+    try
+    {
+        std::lock_guard<std::mutex> pairingModeGuard(_pairingModeThreadMutex);
+        if(_disposing) return Variable::createError(-32500, "Central is disposing.");
+        _stopPairingModeThread = true;
+        _bl->threadManager.join(_pairingModeThread);
+        _stopPairingModeThread = false;
+        _timeLeftInPairingMode = 0;
+        auto interface = GD::interfaces->getDefaultInterface();
+        if(interface)
+        {
+            std::string methodName("setInstallMode");
+            PArray parameters = std::make_shared<Array>();
+            parameters->reserve(3);
+            parameters->push_back(std::make_shared<Variable>(on));
+            parameters->push_back(std::make_shared<Variable>(duration));
+            parameters->push_back(std::make_shared<Variable>(1));
+            auto result = interface->invoke(methodName, parameters);
+            if(result->errorStruct)
+            {
+                GD::out.printWarning("Warning: Could not call setInstallMode on default CCU: " + result->structValue->at("faultString")->stringValue);
+                return Variable::createError(-1, "Could not enable install mode. See log for more details.");
+            }
+        }
+        if(on && duration >= 5)
+        {
+            _timeLeftInPairingMode = duration; //It's important to set it here, because the thread often doesn't completely initialize before getInstallMode requests _timeLeftInPairingMode
+            _bl->threadManager.start(_pairingModeThread, true, &MyCentral::pairingModeTimer, this, duration, debugOutput);
+        }
+        return PVariable(new Variable(VariableType::tVoid));
+    }
+    catch(const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    return Variable::createError(-32500, "Unknown application error.");
 }
 
 }

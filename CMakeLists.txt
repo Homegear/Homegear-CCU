@@ -4,6 +4,8 @@ project(homegear_ccu2)
 set(CMAKE_CXX_STANDARD 11)
 
 set(SOURCE_FILES
+        src/DescriptionCreator.cpp
+        src/DescriptionCreator.h
         src/Factory.cpp
         src/Factory.h
         src/GD.cpp
@@ -17,7 +19,9 @@ set(SOURCE_FILES
         src/MyPacket.cpp
         src/MyPacket.h
         src/MyPeer.cpp
-        src/MyPeer.h src/PhysicalInterfaces/Ccu2.cpp src/PhysicalInterfaces/Ccu2.h)
+        src/MyPeer.h
+        src/PhysicalInterfaces/Ccu2.cpp
+        src/PhysicalInterfaces/Ccu2.h)
 
 add_custom_target(homegear COMMAND ../../makeAll.sh SOURCES ${SOURCE_FILES})
 

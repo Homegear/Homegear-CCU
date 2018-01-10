@@ -31,14 +31,56 @@
 #define HOMEGEAR_CCU2_CCU2_H
 
 #include <homegear-base/Systems/IPhysicalInterface.h>
+#include <homegear-base/Sockets/TcpSocket.h>
+#include <homegear-base/Encoding/RpcEncoder.h>
+#include <homegear-base/Encoding/RpcDecoder.h>
+#include <homegear-base/Encoding/BinaryRpc.h>
 
 namespace MyFamily
 {
 
 class Ccu2 : public BaseLib::Systems::IPhysicalInterface
 {
+public:
     Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings);
     virtual ~Ccu2();
+
+    void startListening();
+    void stopListening();
+    void sendPacket(std::shared_ptr<BaseLib::Systems::Packet> packet) {};
+    BaseLib::PVariable invoke(std::string methodName, BaseLib::PArray parameters);
+
+    virtual bool isOpen() { return _client && _client->connected(); }
+private:
+    BaseLib::Output _out;
+    bool _noHost = true;
+    std::atomic_bool _stopped;
+    int32_t _port = 2001;
+    std::string _listenIp;
+    int32_t _listenPort = -1;
+    int64_t _lastPong = 0;
+    std::shared_ptr<BaseLib::TcpSocket> _server;
+    std::unique_ptr<BaseLib::TcpSocket> _client;
+    std::unique_ptr<BaseLib::Rpc::RpcEncoder> _rpcEncoder;
+    std::unique_ptr<BaseLib::Rpc::RpcDecoder> _rpcDecoder;
+    std::unique_ptr<BaseLib::Rpc::BinaryRpc> _binaryRpc;
+
+    std::thread _initThread;
+    std::thread _pingThread;
+
+    std::mutex _invokeMutex;
+    std::mutex _requestMutex;
+    std::mutex _requestWaitMutex;
+    std::condition_variable _requestConditionVariable;
+
+    std::mutex _responseMutex;
+    BaseLib::PVariable _response;
+
+    void newConnection(int32_t clientId, std::string address, uint16_t port);
+    void packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet);
+    void listen();
+    void init();
+    void ping();
 };
 
 }

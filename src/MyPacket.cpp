@@ -41,4 +41,10 @@ MyPacket::~MyPacket()
 {
 }
 
+MyPacket::MyPacket(std::string& methodName, BaseLib::PArray& parameters)
+{
+    _methodName = methodName;
+    _parameters = parameters;
+}
+
 }

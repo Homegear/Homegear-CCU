@@ -1,0 +1,92 @@
+Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: homegear-ccu2
+Upstream-Contact: Sathya Laufer <sathya@laufers.net>
+
+Files: *
+Copyright: 2013-2017 Homegear UG (haftugnsbeschränkt)
+License: Proprietary
+ 1. General. The software and documentation accompanying this License whether 
+ on disk, in read only memory, on any other media or in any other form (
+ collectively the “Software”) are licensed, not sold, to you by Homegear UG (
+ haftungsbeschränkt) (“Homegear”) for use only under the terms of this 
+ License, and Homegear reserves all rights not expressly granted to you. The 
+ rights granted herein are limited to Homegear’s intellectual property rights 
+ in the Homegear Software and do not include any other patents or intellectual 
+ property rights. You own the media on which the Homegear Software is recorded 
+ but Homegear and/or Homegear's licensor(s) retain ownership of the Software 
+ itself.
+ .
+ 2. Permitted License Uses and Restrictions. Non-commercial usage of the 
+ Software is free. Commercial usage requires the explicit permission of 
+ Homegear. Except as and only to the extent expressly permitted in this 
+ License or by applicable law, you may not decompile, reverse engineer, 
+ disassemble, attempt to derive the source code of, modify, or create 
+ derivative works of the Software or any part thereof. Any attempt to do so is 
+ a violation of the rights of Homegear and its licensors of the Software. If 
+ you breach this restriction, you may be subject to prosecution and damages.
+ .
+ THE SOFTWARE IS NOT INTENDED FOR USE IN WHICH THE FAILURE OF THE SOFTWARE 
+ COULD LEAD TO DEATH, PERSONAL INJURY, OR SEVERE PHYSICAL OR ENVIRONMENTAL 
+ DAMAGE.
+ .
+ 3. Transfer. You may not rent, lease, lend or sublicense the Software.
+ .
+ 4. Termination. This License is effective until terminated. Your rights under 
+ this License will terminate automatically without notice from Homegear if you 
+ fail to comply with any term(s) of this License. Upon the termination of this 
+ License, you shall cease all use of the Homegear Software and destroy all 
+ copies, full or partial, of the Homegear Software.
+ .
+ 5. Limited Warranty on Media. Homegear warrants the media on which the 
+ Software is recorded and delivered by Homegear to be free from defects in 
+ materials and workmanship under normal use for a period of ninety (90) days 
+ from the date of original retail purchase. Your exclusive remedy under this 
+ Section shall be, at Homegear's option, either a refund of the purchase price 
+ of the product containing the Software or replacement of the Software which 
+ is returned to Homegear. THIS LIMITED WARRANTY AND ANY IMPLIED WARRANTIES ON 
+ THE MEDIA INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF 
+ MERCHANTABILITY AND OF FITNESS FOR A PARTICULAR PURPOSE, ARE LIMITED IN 
+ DURATION TO NINETY (90) DAYS FROM THE DATE OF ORIGINAL RETAIL PURCHASE. SOME 
+ JURISDICTIONS DO NOT ALLOW LIMITATIONS ON HOW LONG AN IMPLIED WARRANTY LASTS, 
+ SO THE ABOVE LIMITATION MAY NOT APPLY TO YOU. THE LIMITED WARRANTY SET FORTH 
+ HEREIN IS THE ONLY WARRANTY MADE TO YOU AND IS PROVIDED IN LIEU OF ANY OTHER 
+ WARRANTIES (IF ANY) CREATED BY ANY DOCUMENTATION OR PACKAGING. THIS LIMITED 
+ WARRANTY GIVES YOU SPECIFIC LEGAL RIGHTS, AND YOU MAY ALSO HAVE OTHER RIGHTS 
+ WHICH VARY BY JURISDICTION.
+ .
+ 6. Disclaimer of Warranties. YOU EXPRESSLY ACKNOWLEDGE AND AGREE THAT USE OF 
+ THE SOFTWARE IS AT YOUR SOLE RISK AND THAT THE ENTIRE RISK AS TO SATISFACTORY 
+ QUALITY, PERFORMANCE, ACCURACY AND EFFORT IS WITH YOU. EXCEPT FOR THE LIMITED 
+ WARRANTY ON MEDIA SET FORTH ABOVE AND TO THE MAXIMUM EXTENT PERMITTED BY 
+ APPLICABLE LAW, THE SOFTWARE IS PROVIDED “AS IS”, WITH ALL FAULTS AND WITHOUT 
+ WARRANTY OF ANY KIND, AND DANGER AND DANGER’S LICENSORS (COLLECTIVELY 
+ REFERRED TO AS “DANGER” FOR THE PURPOSES OF SECTIONS 6 AND 7) HEREBY DISCLAIM 
+ ALL WARRANTIES AND CONDITIONS WITH RESPECT TO THE SOFTWARE, EITHER EXPRESS, 
+ IMPLIED OR STATUTORY, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES 
+ AND/OR CONDITIONS OF MERCHANTABILITY, OF SATISFACTORY QUALITY, OF FITNESS FOR 
+ A PARTICULAR PURPOSE, OF ACCURACY, OF QUIET ENJOYMENT, AND NON-INFRINGEMENT 
+ OF THIRD PARTY RIGHTS. DANGER DOES NOT WARRANT AGAINST INTERFERENCE WITH YOUR 
+ ENJOYMENT OF THE SOFTWARE, THAT THE FUNCTIONS CONTAINED IN THE SOFTWARE WILL 
+ MEET YOUR REQUIREMENTS, THAT THE OPERATION OF THE SOFTWARE WILL BE 
+ UNINTERRUPTED OR ERROR-FREE, OR THAT DEFECTS IN THE SOFTWARE WILL BE 
+ CORRECTED. NO ORAL OR WRITTEN INFORMATION OR ADVICE GIVEN BY DANGER SHALL 
+ CREATE A WARRANTY. SHOULD THE SOFTWARE PROVE DEFECTIVE, YOU ASSUME THE ENTIRE 
+ COST OF ALL NECESSARY SERVICING, REPAIR OR CORRECTION. SOME JURISDICTIONS DO 
+ NOT ALLOW THE EXCLUSION OF IMPLIED WARRANTIES OR LIMITATIONS ON APPLICABLE 
+ STATUTORY RIGHTS OF A CONSUMER, SO THE ABOVE EXCLUSION AND LIMITATIONS MAY 
+ NOT APPLY TO YOU.
+ .
+ 7. Limitation of Liability. TO THE EXTENT NOT PROHIBITED BY LAW, IN NO EVENT 
+ SHALL DANGER BE LIABLE FOR PERSONAL INJURY, OR ANY INCIDENTAL, SPECIAL, 
+ INDIRECT OR CONSEQUENTIAL DAMAGES WHATSOEVER, INCLUDING, WITHOUT LIMITATION, 
+ DAMAGES FOR LOSS OF PROFITS, LOSS OF DATA, BUSINESS INTERRUPTION OR ANY OTHER 
+ COMMERCIAL DAMAGES OR LOSSES, ARISING OUT OF OR RELATED TO YOU USE OR 
+ INABILITY TO USE THE SOFTWARE, HOWEVER CAUSED, REGARDLESS OF THE THEORY OF 
+ LIABILITY (CONTRACT, TORT OR OTHERWISE) AND EVEN IF DANGER HAS BEEN ADVISED 
+ OF THE POSSIBILITY OF SUCH DAMAGES. SOME JURISDICTIONS DO NOT ALLOW THE 
+ LIMITATION OF LIABILITY FOR PERSONAL INJURY, OR OF INCIDENTAL OR 
+ CONSEQUENTIAL DAMAGES, SO THIS LIMITATION MAY NOT APPLY TO YOU. In no event 
+ shall Homegear's total liability to you for all damages (other than as may be 
+ required by applicable law in cases involving personal injury) exceed the 
+ amount of fifty Euro (€50.00). The foregoing limitations will apply even if 
+ the above stated remedy fails of its essential purpose.

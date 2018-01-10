@@ -42,12 +42,23 @@ MyFamily::MyFamily(BaseLib::SharedObjects* bl, BaseLib::Systems::DeviceFamily::I
 	GD::out.init(bl);
 	GD::out.setPrefix(std::string("Module ") + MY_FAMILY_NAME + ": ");
 	GD::out.printDebug("Debug: Loading module...");
-	_physicalInterfaces.reset(new Interfaces(bl, _settings->getPhysicalInterfaceSettings()));
+	GD::interfaces = std::make_shared<Interfaces>(bl, _settings->getPhysicalInterfaceSettings());
+    _physicalInterfaces = GD::interfaces;
 }
 
 MyFamily::~MyFamily()
 {
 
+}
+
+bool MyFamily::init()
+{
+	_bl->out.printInfo("Loading XML RPC devices...");
+	std::string xmlPath = _bl->settings.familyDataPath() + std::to_string(GD::family->getFamily()) + "/desc/";
+	BaseLib::Io io;
+	io.init(_bl);
+	if(BaseLib::Io::directoryExists(xmlPath) && !io.getFiles(xmlPath).empty()) _rpcDevices->load(xmlPath);
+	return true;
 }
 
 void MyFamily::dispose()
@@ -56,6 +67,13 @@ void MyFamily::dispose()
 	DeviceFamily::dispose();
 
 	_central.reset();
+}
+
+void MyFamily::reloadRpcDevices()
+{
+    _bl->out.printInfo("Reloading XML RPC devices...");
+    std::string xmlPath = _bl->settings.familyDataPath() + std::to_string(GD::family->getFamily()) + "/desc/";
+    if(BaseLib::Io::directoryExists(xmlPath)) _rpcDevices->load(xmlPath);
 }
 
 void MyFamily::createCentral()
@@ -91,6 +109,7 @@ PVariable MyFamily::getPairingMethods()
 		if(!_central) return PVariable(new Variable(VariableType::tArray));
 		PVariable array(new Variable(VariableType::tArray));
 		array->arrayValue->push_back(PVariable(new Variable(std::string("searchDevices"))));
+		array->arrayValue->push_back(PVariable(new Variable(std::string("setInstallMode"))));
 		return array;
 	}
 	catch(const std::exception& ex)

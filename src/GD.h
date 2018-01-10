@@ -30,12 +30,13 @@
 #ifndef GD_H_
 #define GD_H_
 
-#define MY_FAMILY_ID 20
+#define MY_FAMILY_ID 24
 #define MY_FAMILY_NAME "CCU2"
 
 #include <homegear-base/BaseLib.h>
 #include "MyFamily.h"
 #include "PhysicalInterfaces/Ccu2.h"
+#include "Interfaces.h"
 
 namespace MyFamily
 {
@@ -47,8 +48,7 @@ public:
 
 	static BaseLib::SharedObjects* bl;
 	static MyFamily* family;
-	static std::map<std::string, std::shared_ptr<Ccu2>> physicalInterfaces;
-	static std::shared_ptr<Ccu2> defaultPhysicalInterface;
+	static std::shared_ptr<Interfaces> interfaces;
 	static BaseLib::Output out;
 private:
 	GD();
