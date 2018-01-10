@@ -106,6 +106,11 @@ protected:
 
 	virtual std::shared_ptr<BaseLib::Systems::ICentral> getCentral();
 
+	/**
+	 * {@inheritDoc}
+	 */
+	virtual PVariable getValueFromDevice(PParameter& parameter, int32_t channel, bool asynchronous);
+
 	virtual PParameterGroup getParameterSet(int32_t channel, ParameterGroup::Type::Enum type);
 
 	void sendPacket(PMyPacket packet, std::string responseId, int32_t delay);

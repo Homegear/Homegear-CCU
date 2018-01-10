@@ -92,6 +92,7 @@ void MyPeer::init()
 {
 	try
 	{
+
 	}
 	catch(const std::exception& ex)
 	{
@@ -490,7 +491,45 @@ void MyPeer::packetReceived(PMyPacket& packet)
 	try
 	{
 		if(_disposing || !packet || !_rpcDevice) return;
+		if(packet->getMethodName() != "event") return;
 
+		auto addressPair = BaseLib::HelperFunctions::splitFirst(packet->getParameters()->at(1)->stringValue, ':');
+		int32_t channel = BaseLib::Math::getNumber(addressPair.second);
+
+		std::string variableName = packet->getParameters()->at(2)->stringValue;
+		BaseLib::PVariable value = packet->getParameters()->at(3);
+
+		auto channelIterator = valuesCentral.find(channel);
+		if(channelIterator == valuesCentral.end()) return;
+
+		auto variableIterator = channelIterator->second.find(variableName);
+		if(variableIterator == channelIterator->second.end()) return;
+
+		BaseLib::Systems::RpcConfigurationParameter& parameter = variableIterator->second;
+		if(!parameter.rpcParameter) return;
+
+		std::vector<uint8_t> binaryValue;
+		parameter.rpcParameter->convertToPacket(value, binaryValue);
+		parameter.setBinaryData(binaryValue);
+		if(parameter.databaseId > 0) saveParameter(parameter.databaseId, binaryValue);
+		else saveParameter(0, ParameterGroup::Type::Enum::variables, channel, variableName, binaryValue);
+		if(_bl->debugLevel >= 4) GD::out.printInfo("Info: " + variableName + " of peer " + std::to_string(_peerID) + " with serial number " + _serialNumber + ":" + std::to_string(channel) + " was set to 0x" + BaseLib::HelperFunctions::getHexString(binaryValue) + ".");
+
+		std::map<uint32_t, std::shared_ptr<std::vector<std::string>>> valueKeys;
+		std::map<uint32_t, std::shared_ptr<std::vector<PVariable>>> rpcValues;
+		valueKeys[channel] = std::make_shared<std::vector<std::string>>();
+		rpcValues[channel] = std::make_shared<std::vector<PVariable>>();
+		valueKeys[channel]->push_back(variableName);
+		rpcValues[channel]->push_back(parameter.rpcParameter->convertFromPacket(binaryValue, true));
+
+		for(std::map<uint32_t, std::shared_ptr<std::vector<std::string>>>::const_iterator j = valueKeys.begin(); j != valueKeys.end(); ++j)
+		{
+			if(j->second->empty()) continue;
+
+			std::string address(_serialNumber + ":" + std::to_string(j->first));
+			raiseEvent(_peerID, j->first, j->second, rpcValues.at(j->first));
+			raiseRPCEvent(_peerID, j->first, address, j->second, rpcValues.at(j->first));
+		}
 	}
 	catch(const std::exception& ex)
     {
@@ -504,6 +543,39 @@ void MyPeer::packetReceived(PMyPacket& packet)
     {
     	GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
+}
+
+PVariable MyPeer::getValueFromDevice(PParameter& parameter, int32_t channel, bool asynchronous)
+{
+	try
+	{
+		auto interface = GD::interfaces->getInterface(_physicalInterfaceId);
+		if(!interface)
+		{
+			GD::out.printError("Error: Peer " + std::to_string(_peerID) + " could not get physical interface.");
+		}
+		else
+		{
+			BaseLib::PArray parameters = std::make_shared<Array>();
+			parameters->reserve(2);
+			parameters->push_back(std::make_shared<Variable>(_serialNumber + ":" + std::to_string(channel)));
+			parameters->push_back(std::make_shared<Variable>(parameter->id));
+			return interface->invoke("getValue", parameters);
+		}
+	}
+	catch(const std::exception& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch(BaseLib::Exception& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch(...)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+	}
+	return Variable::createError(-32500, "Unknown application error.");
 }
 
 PParameterGroup MyPeer::getParameterSet(int32_t channel, ParameterGroup::Type::Enum type)
@@ -715,20 +787,6 @@ PVariable MyPeer::setValue(BaseLib::PRpcClientInfo clientInfo, uint32_t channel,
 		}
 		else if(rpcParameter->physical->operationType != IPhysical::OperationType::Enum::command) return Variable::createError(-6, "Parameter is not settable.");
 		if(rpcParameter->setPackets.empty() && !rpcParameter->writeable) return Variable::createError(-6, "parameter is read only");
-		std::vector<std::shared_ptr<Parameter::Packet>> setRequests;
-		if(!rpcParameter->setPackets.empty())
-		{
-			for(std::vector<std::shared_ptr<Parameter::Packet>>::iterator i = rpcParameter->setPackets.begin(); i != rpcParameter->setPackets.end(); ++i)
-			{
-				if((*i)->conditionOperator != Parameter::Packet::ConditionOperator::none)
-				{
-					int32_t intValue = value->integerValue;
-					if(parameter.rpcParameter->logical->type == BaseLib::DeviceDescription::ILogical::Type::Enum::tBoolean) intValue = value->booleanValue;
-					if(!(*i)->checkCondition(intValue)) continue;
-				}
-				setRequests.push_back(*i);
-			}
-		}
 
 		std::vector<uint8_t> parameterData;
 		rpcParameter->convertToPacket(value, parameterData);
@@ -737,7 +795,23 @@ PVariable MyPeer::setValue(BaseLib::PRpcClientInfo clientInfo, uint32_t channel,
 		else saveParameter(0, ParameterGroup::Type::Enum::variables, channel, valueKey, parameterData);
 		if(_bl->debugLevel >= 4) GD::out.printInfo("Info: " + valueKey + " of peer " + std::to_string(_peerID) + " with serial number " + _serialNumber + ":" + std::to_string(channel) + " was set to 0x" + BaseLib::HelperFunctions::getHexString(parameterData) + ".");
 
+		auto interface = GD::interfaces->getInterface(_physicalInterfaceId);
+		if(!interface)
+		{
+			GD::out.printError("Error: Peer " + std::to_string(_peerID) + " could not get physical interface.");
+		}
+		else
+		{
+			if(value->type == BaseLib::VariableType::tInteger64) value->setType(BaseLib::VariableType::tInteger);
 
+			PArray parameters = std::make_shared<Array>();
+			parameters->reserve(3);
+			parameters->push_back(std::make_shared<Variable>(_serialNumber + ":" + std::to_string(channel)));
+			parameters->push_back(std::make_shared<Variable>(valueKey));
+			parameters->push_back(value);
+			auto result = interface->invoke("setValue", parameters);
+			if(result->errorStruct) GD::out.printError("Error: Could not execute setValue for peer " + std::to_string(_peerID) + ": " + result->structValue->at("faultString")->stringValue);
+		}
 
 		if(!valueKeys->empty())
 		{

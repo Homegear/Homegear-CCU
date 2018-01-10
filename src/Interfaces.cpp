@@ -161,7 +161,7 @@ void Interfaces::removeUnknownInterfaces(std::set<std::string>& knownInterfaces)
         {
             std::shared_ptr<Ccu2> interface(std::dynamic_pointer_cast<Ccu2>(interfaceBase.second));
             if(!interface) continue;
-            if(interface->getType() != "ccu2-auto" || knownInterfaces.find(interfaceBase.first) != knownInterfaces.end()) continue;
+            if(interface->getType() != "ccu2-auto" || knownInterfaces.find(interfaceBase.first) != knownInterfaces.end() || interface->isOpen()) continue;
             {
                 GD::out.printInfo("Removing CCU2 with serial number " + interfaceBase.first + " and IP address " + interface->getHostname() + ".");
                 std::string name = interfaceBase.first + ".devicetype";

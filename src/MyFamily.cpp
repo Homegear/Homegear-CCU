@@ -69,6 +69,13 @@ void MyFamily::dispose()
 	_central.reset();
 }
 
+void MyFamily::reloadRpcDevices()
+{
+    _bl->out.printInfo("Reloading XML RPC devices...");
+    std::string xmlPath = _bl->settings.familyDataPath() + std::to_string(GD::family->getFamily()) + "/desc/";
+    if(BaseLib::Io::directoryExists(xmlPath)) _rpcDevices->load(xmlPath);
+}
+
 void MyFamily::createCentral()
 {
 	try
@@ -102,6 +109,7 @@ PVariable MyFamily::getPairingMethods()
 		if(!_central) return PVariable(new Variable(VariableType::tArray));
 		PVariable array(new Variable(VariableType::tArray));
 		array->arrayValue->push_back(PVariable(new Variable(std::string("searchDevices"))));
+		array->arrayValue->push_back(PVariable(new Variable(std::string("setInstallMode"))));
 		return array;
 	}
 	catch(const std::exception& ex)

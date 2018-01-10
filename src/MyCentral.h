@@ -32,6 +32,7 @@
 
 #include "MyPeer.h"
 #include "MyPacket.h"
+#include "DescriptionCreator.h"
 #include <homegear-base/BaseLib.h>
 
 #include <memory>
@@ -56,7 +57,6 @@ public:
 
 	uint64_t getPeerIdFromSerial(std::string& serialNumber) { std::shared_ptr<MyPeer> peer = getPeer(serialNumber); if(peer) return peer->getID(); else return 0; }
 	std::shared_ptr<MyPeer> getPeer(uint64_t id);
-	std::shared_ptr<MyPeer> getPeer(int32_t address);
 	std::shared_ptr<MyPeer> getPeer(std::string serialNumber);
 
 	virtual PVariable createDevice(BaseLib::PRpcClientInfo clientInfo, int32_t deviceType, std::string serialNumber, int32_t address, int32_t firmwareVersion, std::string interfaceId);
@@ -67,10 +67,20 @@ public:
 	virtual PVariable putParamset(BaseLib::PRpcClientInfo clientInfo, uint64_t peerId, int32_t channel, ParameterGroup::Type::Enum type, uint64_t remoteId, int32_t remoteChannel, PVariable paramset);
 	virtual PVariable searchDevices(BaseLib::PRpcClientInfo clientInfo);
 	virtual PVariable searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLib::PVariable metadata);
+    virtual PVariable setInstallMode(BaseLib::PRpcClientInfo clientInfo, bool on, uint32_t duration, BaseLib::PVariable metadata, bool debugOutput = true);
 protected:
 	std::atomic_bool _shuttingDown;
 	std::atomic_bool _stopWorkerThread;
 	std::thread _workerThread;
+
+    std::atomic_bool _pairing;
+    std::atomic<uint32_t> _timeLeftInPairingMode;
+    std::atomic_bool _stopPairingModeThread;
+    std::mutex _pairingModeThreadMutex;
+    std::thread _pairingModeThread;
+
+    std::mutex _pairMutex;
+    DescriptionCreator _descriptionCreator;
 
 	virtual void init();
 	void worker();
@@ -78,8 +88,11 @@ protected:
 	virtual void savePeers(bool full);
 	virtual void loadVariables() {}
 	virtual void saveVariables() {}
-	std::shared_ptr<MyPeer> createPeer(uint32_t deviceType, int32_t address, std::string serialNumber, bool save = true);
+    std::shared_ptr<MyPeer> createPeer(uint32_t deviceType, int32_t firmwareVersion, std::string serialNumber, bool save = true);
 	void deletePeer(uint64_t id);
+
+    void pairingModeTimer(int32_t duration, bool debugOutput = true);
+    void pairDevice(std::string& interfaceId, std::string& serialNumber);
 };
 
 }
