@@ -77,7 +77,8 @@ private:
     std::unique_ptr<BaseLib::TcpSocket> _hmipClient;
     std::unique_ptr<BaseLib::Rpc::RpcEncoder> _rpcEncoder;
     std::unique_ptr<BaseLib::Rpc::RpcDecoder> _rpcDecoder;
-    bool _isBinaryRpc = false;
+    std::atomic_bool _hmipNewDevicesCalled;
+    std::atomic_bool _isBinaryRpc;
     std::unique_ptr<BaseLib::Rpc::BinaryRpc> _binaryRpc;
     std::unique_ptr<BaseLib::Http> _http;
     std::unique_ptr<BaseLib::Rpc::XmlrpcEncoder> _xmlrpcEncoder;

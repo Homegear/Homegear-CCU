@@ -49,6 +49,9 @@ Ccu2::Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings
     _binaryRpc.reset(new BaseLib::Rpc::BinaryRpc(GD::bl));
     _http.reset(new BaseLib::Http());
 
+    _hmipNewDevicesCalled = false;
+    _isBinaryRpc = false;
+
     _out.init(GD::bl);
     BaseLib::HelperFunctions::toUpper(settings->id);
     _out.setPrefix(GD::out.getPrefix() + settings->id + ": ");
@@ -128,6 +131,7 @@ void Ccu2::startListening()
             _stopped = false;
             _lastPongBidcos.store(BaseLib::HelperFunctions::getTime());
             _lastPongHmip.store(BaseLib::HelperFunctions::getTime());
+            _hmipNewDevicesCalled = false;
 
             BaseLib::TcpSocket::TcpServerInfo serverInfo;
             serverInfo.newConnectionCallback = std::bind(&Ccu2::newConnection, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
@@ -379,6 +383,11 @@ void Ccu2::processPacket(int32_t clientId, bool binaryRpc, std::string& methodNa
                 }
             }
         }
+        else if(methodName == "newDevices")
+        {
+            _out.printInfo("Info: CCU is calling RPC method " + methodName);
+            if(!binaryRpc) _hmipNewDevicesCalled = true;
+        }
         else if(methodName == "system.listMethods" || methodName == "listDevices")
         {
             _out.printInfo("Info: CCU is calling RPC method " + methodName);
@@ -557,7 +566,7 @@ void Ccu2::ping()
             parameters->push_back(std::make_shared<BaseLib::Variable>(_bidcosIdString));
             auto result = invoke(RpcType::bidcos, "ping", parameters);
             if(result->errorStruct) _out.printError("Error calling \"ping\": " + result->structValue->at("faultString")->stringValue);
-            else if(BaseLib::HelperFunctions::getTime() - _lastPongBidcos.load() > 70000 || BaseLib::HelperFunctions::getTime() - _lastPongHmip.load() > 300000)
+            else if(BaseLib::HelperFunctions::getTime() - _lastPongBidcos.load() > 70000 || (_hmipNewDevicesCalled && BaseLib::HelperFunctions::getTime() - _lastPongHmip.load() > 300000))
             {
                 _out.printError("Error: No keep alive response received. Reinitializing...");
                 init();
