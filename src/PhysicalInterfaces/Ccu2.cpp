@@ -322,7 +322,7 @@ void Ccu2::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet
         }
         catch(BaseLib::Rpc::BinaryRpcException& ex)
         {
-            _out.printError("Error processing packet: " + ex.what());
+            _out.printError("Error processing packet (1): " + ex.what());
             _binaryRpc->reset();
             _http->reset();
         }
@@ -387,6 +387,10 @@ void Ccu2::processPacket(int32_t clientId, bool binaryRpc, std::string& methodNa
         {
             _out.printInfo("Info: CCU is calling RPC method " + methodName);
             if(!binaryRpc) _hmipNewDevicesCalled = true;
+            if(!binaryRpc) parameters->at(0)->integerValue = (int32_t) RpcType::hmip;
+            else parameters->at(0)->integerValue = (int32_t) RpcType::bidcos;
+            PMyPacket packet = std::make_shared<MyPacket>(methodName, parameters);
+            raisePacketReceived(packet);
         }
         else if(methodName == "system.listMethods" || methodName == "listDevices")
         {
@@ -514,7 +518,7 @@ void Ccu2::listen(Ccu2::RpcType rpcType)
                 }
                 catch(BaseLib::Rpc::BinaryRpcException& ex)
                 {
-                    _out.printError("Error processing packet: " + ex.what());
+                    _out.printError("Error processing packet (2): " + ex.what());
                     http.reset();
                     binaryRpc.reset();
                 }
@@ -618,7 +622,7 @@ BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, B
         else if(rpcType == RpcType::hmip) _hmipClient->proofwrite(data);
 
         std::unique_lock<std::mutex> waitLock(_requestWaitMutex);
-        _requestConditionVariable.wait_for(waitLock, std::chrono::milliseconds(15000), [&]
+        _requestConditionVariable.wait_for(waitLock, std::chrono::milliseconds(30000), [&]
         {
             std::lock_guard<std::mutex> responseGuard(_responseMutex);
             return _response->type != BaseLib::VariableType::tVoid || _stopped;

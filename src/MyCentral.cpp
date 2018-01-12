@@ -1332,13 +1332,16 @@ std::shared_ptr<Variable> MyCentral::setInstallMode(BaseLib::PRpcClientInfo clie
         _stopPairingModeThread = false;
         _timeLeftInPairingMode = 0;
 
+        std::string ccu;
         std::string sgtin;
         std::string key;
 
         Ccu2::RpcType rpcType = Ccu2::RpcType::bidcos;
         if(metadata)
         {
-            auto metadataIterator = metadata->structValue->find("type");
+            auto metadataIterator = metadata->structValue->find("ccu");
+            if(metadataIterator != metadata->structValue->end()) ccu = metadataIterator->second->stringValue;
+            metadataIterator = metadata->structValue->find("type");
             if(metadataIterator != metadata->structValue->end() && metadataIterator->second->stringValue == "hmip") rpcType = Ccu2::RpcType::hmip;
             metadataIterator = metadata->structValue->find("sgtin");
             if(metadataIterator != metadata->structValue->end()) sgtin = metadataIterator->second->stringValue;
@@ -1346,7 +1349,9 @@ std::shared_ptr<Variable> MyCentral::setInstallMode(BaseLib::PRpcClientInfo clie
             if(metadataIterator != metadata->structValue->end()) key = metadataIterator->second->stringValue;
         }
 
-        auto interface = GD::interfaces->getDefaultInterface();
+        std::shared_ptr<Ccu2> interface;
+        if(!ccu.empty()) interface = GD::interfaces->getInterface(ccu);
+        if(!interface) interface = GD::interfaces->getDefaultInterface();
         if(interface)
         {
             if(sgtin.empty() || key.empty())
@@ -1356,7 +1361,7 @@ std::shared_ptr<Variable> MyCentral::setInstallMode(BaseLib::PRpcClientInfo clie
                 parameters->reserve(3);
                 parameters->push_back(std::make_shared<Variable>(on));
                 parameters->push_back(std::make_shared<Variable>(duration));
-                parameters->push_back(std::make_shared<Variable>(1));
+                if(rpcType == Ccu2::RpcType::bidcos) parameters->push_back(std::make_shared<Variable>(1));
                 auto result = interface->invoke(rpcType, methodName, parameters);
                 if(result->errorStruct)
                 {
@@ -1375,8 +1380,8 @@ std::shared_ptr<Variable> MyCentral::setInstallMode(BaseLib::PRpcClientInfo clie
                 BaseLib::PVariable whitelistStruct = std::make_shared<Variable>(BaseLib::VariableType::tStruct);
                 whitelistStructs->arrayValue->push_back(whitelistStruct);
                 whitelistStruct->structValue->emplace("ADDRESS", std::make_shared<Variable>(sgtin));
+				whitelistStruct->structValue->emplace("KEY", std::make_shared<Variable>(key));
                 whitelistStruct->structValue->emplace("KEY_MODE", std::make_shared<Variable>("LOCAL"));
-                whitelistStruct->structValue->emplace("KEY", std::make_shared<Variable>(key));
                 parameters->push_back(whitelistStructs);
                 auto result = interface->invoke(rpcType, methodName, parameters);
                 if(result->errorStruct)
