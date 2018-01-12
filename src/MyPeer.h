@@ -57,6 +57,8 @@ public:
 	//{{{ In table variables
 	std::string getPhysicalInterfaceId();
 	void setPhysicalInterfaceId(std::string);
+    Ccu2::RpcType getRpcType() { return _rpcType; }
+    void setRpcType(Ccu2::RpcType value) { _rpcType = value; saveVariable(20, (int32_t)value); }
 	//}}}
 
 	std::shared_ptr<Ccu2>& getPhysicalInterface() { return _physicalInterface; }
@@ -91,6 +93,7 @@ public:
 protected:
 	//In table variables:
 	std::string _physicalInterfaceId;
+    Ccu2::RpcType _rpcType = Ccu2::RpcType::bidcos;
 	//End
 
 	bool _shuttingDown = false;

@@ -25,12 +25,12 @@ public:
     DescriptionCreator();
     virtual ~DescriptionCreator() = default;
 
-    DescriptionCreator::PeerInfo createDescription(std::string& interfaceId, std::string& serialNumber, uint32_t oldTypeNumber, std::unordered_set<uint32_t>& knownTypeNumbers);
+    DescriptionCreator::PeerInfo createDescription(Ccu2::RpcType rpcType, std::string& interfaceId, std::string& serialNumber, uint32_t oldTypeNumber, std::unordered_set<uint32_t>& knownTypeNumbers);
 private:
     std::string _xmlPath;
 
     void createDirectories();
-    void addParameterSet(std::shared_ptr<Ccu2>& interface, std::shared_ptr<HomegearDevice>& device, std::string& serialNumber, int32_t channel, std::string& type);
+    void addParameterSet(Ccu2::RpcType rpcType, std::shared_ptr<Ccu2>& interface, std::shared_ptr<HomegearDevice>& device, std::string& serialNumber, int32_t channel, std::string& type);
 };
 
 }
