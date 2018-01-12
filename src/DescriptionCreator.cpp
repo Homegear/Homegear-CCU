@@ -11,7 +11,7 @@ DescriptionCreator::DescriptionCreator()
 
 }
 
-DescriptionCreator::PeerInfo DescriptionCreator::createDescription(std::string& interfaceId, std::string& serialNumber, uint32_t oldTypeNumber, std::unordered_set<uint32_t>& knownTypeNumbers)
+DescriptionCreator::PeerInfo DescriptionCreator::createDescription(Ccu2::RpcType rpcType, std::string& interfaceId, std::string& serialNumber, uint32_t oldTypeNumber, std::unordered_set<uint32_t>& knownTypeNumbers)
 {
     try
     {
@@ -25,7 +25,7 @@ DescriptionCreator::PeerInfo DescriptionCreator::createDescription(std::string& 
 
         PArray parameters = std::make_shared<Array>();
         parameters->push_back(std::make_shared<Variable>(serialNumber));
-        auto description = interface->invoke("getDeviceDescription", parameters);
+        auto description = interface->invoke(rpcType, "getDeviceDescription", parameters);
         if(description->errorStruct)
         {
             GD::out.printError("Error: Could not call getDeviceDescription: " + description->structValue->at("faultString")->stringValue);
@@ -48,7 +48,7 @@ DescriptionCreator::PeerInfo DescriptionCreator::createDescription(std::string& 
         {
             for(auto& paramset : *descriptionIterator->second->arrayValue)
             {
-                addParameterSet(interface, device, serialNumber, -1, paramset->stringValue);
+                addParameterSet(rpcType, interface, device, serialNumber, -1, paramset->stringValue);
             }
         }
 
@@ -61,14 +61,14 @@ DescriptionCreator::PeerInfo DescriptionCreator::createDescription(std::string& 
                 int32_t channel = BaseLib::Math::getNumber(addressPair.second);
 
                 parameters->at(0)->stringValue = child->stringValue;
-                auto channelDescription = interface->invoke("getDeviceDescription", parameters);
+                auto channelDescription = interface->invoke(rpcType, "getDeviceDescription", parameters);
 
                 auto parametersetIterator = channelDescription->structValue->find("PARAMSETS");
                 if(parametersetIterator != channelDescription->structValue->end())
                 {
                     for(auto& paramset : *parametersetIterator->second->arrayValue)
                     {
-                        addParameterSet(interface, device, serialNumber, channel, paramset->stringValue);
+                        addParameterSet(rpcType, interface, device, serialNumber, channel, paramset->stringValue);
                     }
                 }
             }
@@ -146,7 +146,7 @@ void DescriptionCreator::createDirectories()
     }
 }
 
-void DescriptionCreator::addParameterSet(std::shared_ptr<Ccu2>& interface, std::shared_ptr<HomegearDevice>& device, std::string& serialNumber, int32_t channel, std::string& type)
+void DescriptionCreator::addParameterSet(Ccu2::RpcType rpcType, std::shared_ptr<Ccu2>& interface, std::shared_ptr<HomegearDevice>& device, std::string& serialNumber, int32_t channel, std::string& type)
 {
     try
     {
@@ -157,7 +157,7 @@ void DescriptionCreator::addParameterSet(std::shared_ptr<Ccu2>& interface, std::
         parameters->reserve(2);
         parameters->push_back(std::make_shared<Variable>(channel == -1 ? serialNumber : serialNumber + ":" + std::to_string(channel)));
         parameters->push_back(std::make_shared<Variable>(type));
-        auto paramsetId = interface->invoke(methodName, parameters);
+        auto paramsetId = interface->invoke(rpcType, methodName, parameters);
         if(paramsetId->errorStruct)
         {
             GD::out.printWarning("Warning: Could not call getParamsetId on channel " + std::to_string(channel));
@@ -165,7 +165,7 @@ void DescriptionCreator::addParameterSet(std::shared_ptr<Ccu2>& interface, std::
         }
 
         methodName = "getParamsetDescription";
-        auto parametersetDescription = interface->invoke(methodName, parameters);
+        auto parametersetDescription = interface->invoke(rpcType, methodName, parameters);
         if(parametersetDescription->errorStruct)
         {
             GD::out.printWarning("Warning: Could not call getParamsetDescription on channel " + std::to_string(channel));

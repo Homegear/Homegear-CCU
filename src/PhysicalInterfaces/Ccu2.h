@@ -35,6 +35,9 @@
 #include <homegear-base/Encoding/RpcEncoder.h>
 #include <homegear-base/Encoding/RpcDecoder.h>
 #include <homegear-base/Encoding/BinaryRpc.h>
+#include <homegear-base/Encoding/XmlrpcDecoder.h>
+#include <homegear-base/Encoding/XmlrpcEncoder.h>
+#include <homegear-base/Encoding/Http.h>
 
 namespace MyFamily
 {
@@ -42,29 +45,45 @@ namespace MyFamily
 class Ccu2 : public BaseLib::Systems::IPhysicalInterface
 {
 public:
+    enum class RpcType : int32_t
+    {
+        bidcos,
+        hmip
+    };
+
     Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings);
     virtual ~Ccu2();
 
     void startListening();
     void stopListening();
     void sendPacket(std::shared_ptr<BaseLib::Systems::Packet> packet) {};
-    BaseLib::PVariable invoke(std::string methodName, BaseLib::PArray parameters);
+    BaseLib::PVariable invoke(RpcType rpcType, std::string methodName, BaseLib::PArray parameters);
 
-    virtual bool isOpen() { return _client && _client->connected(); }
+    virtual bool isOpen() { return _bidcosClient && _bidcosClient->connected() && _hmipClient && _hmipClient->connected(); }
 private:
     BaseLib::Output _out;
     bool _noHost = true;
     std::atomic_bool _stopped;
     int32_t _port = 2001;
+    int32_t _port2 = 2010;
     std::string _listenIp;
     int32_t _listenPort = -1;
-    int64_t _lastPong = 0;
+    std::string _bidcosIdString;
+    std::string _hmipIdString;
+    std::atomic_long _lastPongBidcos;
+    std::atomic_long _lastPongHmip;
     std::shared_ptr<BaseLib::TcpSocket> _server;
-    std::unique_ptr<BaseLib::TcpSocket> _client;
+    std::unique_ptr<BaseLib::TcpSocket> _bidcosClient;
+    std::unique_ptr<BaseLib::TcpSocket> _hmipClient;
     std::unique_ptr<BaseLib::Rpc::RpcEncoder> _rpcEncoder;
     std::unique_ptr<BaseLib::Rpc::RpcDecoder> _rpcDecoder;
+    bool _isBinaryRpc = false;
     std::unique_ptr<BaseLib::Rpc::BinaryRpc> _binaryRpc;
+    std::unique_ptr<BaseLib::Http> _http;
+    std::unique_ptr<BaseLib::Rpc::XmlrpcEncoder> _xmlrpcEncoder;
+    std::unique_ptr<BaseLib::Rpc::XmlrpcDecoder> _xmlrpcDecoder;
 
+    std::thread _listenThread2;
     std::thread _initThread;
     std::thread _pingThread;
 
@@ -78,7 +97,8 @@ private:
 
     void newConnection(int32_t clientId, std::string address, uint16_t port);
     void packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet);
-    void listen();
+    void processPacket(int32_t clientId, bool binaryRpc, std::string& methodName, BaseLib::PArray parameters);
+    void listen(RpcType rpcType);
     void init();
     void ping();
 };

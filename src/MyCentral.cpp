@@ -273,7 +273,7 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
                     std::string serialNumber = addressIterator->second->stringValue;
                     BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
                     if(serialNumber.find(':') != std::string::npos) continue;
-                    pairDevice(senderId, serialNumber);
+                    pairDevice((Ccu2::RpcType)parameters->at(0)->integerValue, senderId, serialNumber);
                 }
                 return true;
             }
@@ -308,7 +308,7 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
     return false;
 }
 
-void MyCentral::pairDevice(std::string& interfaceId, std::string& serialNumber)
+void MyCentral::pairDevice(Ccu2::RpcType rpcType, std::string& interfaceId, std::string& serialNumber)
 {
     try
     {
@@ -334,7 +334,7 @@ void MyCentral::pairDevice(std::string& interfaceId, std::string& serialNumber)
         }
 
 		auto knownTypeIds = GD::family->getRpcDevices()->getKnownTypeNumbers();
-        auto peerInfo = _descriptionCreator.createDescription(interfaceId, serialNumber, peerToDeleteType, knownTypeIds);
+        auto peerInfo = _descriptionCreator.createDescription(rpcType, interfaceId, serialNumber, peerToDeleteType, knownTypeIds);
         if(peerInfo.serialNumber.empty()) return; //Error
         GD::family->reloadRpcDevices();
 
@@ -348,6 +348,7 @@ void MyCentral::pairDevice(std::string& interfaceId, std::string& serialNumber)
         if(peerToDelete != 0 && peerToDelete != peer->getID()) peer->setId(nullptr, peerToDelete);
         peer->initializeCentralConfig();
         peer->setPhysicalInterfaceId(interfaceId);
+        peer->setRpcType(rpcType);
 
         {
             std::lock_guard<std::mutex> peersGuard(_peersMutex);
@@ -635,7 +636,7 @@ std::string MyCentral::handleCliCommand(std::string command)
 				std::string bar(" │ ");
 				const int32_t idWidth = 8;
 				const int32_t nameWidth = 25;
-				const int32_t serialWidth = 13;
+				const int32_t serialWidth = 14;
 				const int32_t typeWidth1 = 8;
 				const int32_t typeWidth2 = 45;
 				std::string nameHeader("Name");
@@ -649,7 +650,7 @@ std::string MyCentral::handleCliCommand(std::string command)
 					<< std::setw(typeWidth1) << "Type" << bar
 					<< typeStringHeader
 					<< std::endl;
-				stringStream << "─────────┼───────────────────────────┼───────────────┼──────────┼───────────────────────────────────────────────" << std::endl;
+				stringStream << "─────────┼───────────────────────────┼────────────────┼──────────┼───────────────────────────────────────────────" << std::endl;
 				stringStream << std::setfill(' ')
 					<< std::setw(idWidth) << " " << bar
 					<< std::setw(nameWidth) << " " << bar
@@ -709,7 +710,7 @@ std::string MyCentral::handleCliCommand(std::string command)
 					stringStream << std::endl << std::dec;
 				}
 				_peersMutex.unlock();
-				stringStream << "─────────┴───────────────────────────┴───────────────┴──────────┴───────────────────────────────────────────────" << std::endl;
+				stringStream << "─────────┴───────────────────────────┴────────────────┴──────────┴───────────────────────────────────────────────" << std::endl;
 
 				return stringStream.str();
 			}
@@ -818,12 +819,6 @@ std::string MyCentral::handleCliCommand(std::string command)
 			}
 			return stringStream.str();
 		}
-        else if(BaseLib::HelperFunctions::checkCliCommand(command, "test", "", "", 0, arguments, showHelp))
-        {
-            BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
-            stringStream << GD::interfaces->getDefaultInterface()->invoke("logLevel", parameters)->print(false, false) << std::endl;
-            return stringStream.str();
-        }
 		else return "Unknown command.\n";
 	}
 	catch(const std::exception& ex)
@@ -868,65 +863,6 @@ std::shared_ptr<MyPeer> MyCentral::createPeer(uint32_t deviceType, int32_t firmw
     return std::shared_ptr<MyPeer>();
 }
 
-PVariable MyCentral::createDevice(BaseLib::PRpcClientInfo clientInfo, int32_t deviceType, std::string serialNumber, int32_t address, int32_t firmwareVersion, std::string interfaceId)
-{
-	try
-	{
-		std::string serial = "EOD" + BaseLib::HelperFunctions::getHexString(address, 8);
-		if(peerExists(serial)) return Variable::createError(-5, "This peer is already paired to this central.");
-
-		std::shared_ptr<MyPeer> peer = createPeer(deviceType, address, serial, false);
-		if(!peer || !peer->getRpcDevice()) return Variable::createError(-6, "Unknown device type.");
-
-		try
-		{
-			peer->save(true, true, false);
-			peer->initializeCentralConfig();
-			peer->setPhysicalInterfaceId(interfaceId);
-			_peersMutex.lock();
-			_peers[peer->getAddress()] = peer;
-			_peersById[peer->getID()] = peer;
-			_peersBySerial[peer->getSerialNumber()] = peer;
-			_peersMutex.unlock();
-		}
-		catch(const std::exception& ex)
-		{
-			_peersMutex.unlock();
-			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-		}
-		catch(BaseLib::Exception& ex)
-		{
-			_peersMutex.unlock();
-			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-		}
-		catch(...)
-		{
-			_peersMutex.unlock();
-			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-		}
-
-		PVariable deviceDescriptions(new Variable(VariableType::tArray));
-		deviceDescriptions->arrayValue = peer->getDeviceDescriptions(clientInfo, true, std::map<std::string, bool>());
-		raiseRPCNewDevices(deviceDescriptions);
-		GD::out.printMessage("Added peer " + std::to_string(peer->getID()) + ".");
-
-		return PVariable(new Variable((uint32_t)peer->getID()));
-	}
-	catch(const std::exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
-    return Variable::createError(-32500, "Unknown application error.");
-}
-
 PVariable MyCentral::deleteDevice(BaseLib::PRpcClientInfo clientInfo, std::string serialNumber, int32_t flags)
 {
 	try
@@ -969,7 +905,7 @@ PVariable MyCentral::deleteDevice(BaseLib::PRpcClientInfo clientInfo, uint64_t p
             parameters->reserve(2);
             parameters->push_back(std::make_shared<Variable>(peer->getSerialNumber()));
             parameters->push_back(std::make_shared<Variable>(flags));
-            auto result = interface->invoke("deleteDevice", parameters);
+            auto result = interface->invoke(peer->getRpcType(), "deleteDevice", parameters);
             if(result->errorStruct) GD::out.printError("Error calling deleteDevice on CCU: " + result->structValue->at("faultString")->stringValue);
         }
 
@@ -1107,10 +1043,10 @@ PVariable MyCentral::searchDevices(BaseLib::PRpcClientInfo clientInfo)
         {
             std::string methodName("listDevices");
             BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
-            auto result = interface->invoke(methodName, parameters);
+            auto result = interface->invoke(Ccu2::RpcType::bidcos, methodName, parameters);
             if(result->errorStruct)
             {
-                GD::out.printWarning("Warning: Error calling listDevices on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
+                GD::out.printWarning("Warning: Error calling listDevices for HomeMatic BidCoS on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
                 continue;
             }
 
@@ -1122,8 +1058,26 @@ PVariable MyCentral::searchDevices(BaseLib::PRpcClientInfo clientInfo)
                 BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
                 if(serialNumber.find(':') != std::string::npos) continue;
                 std::string interfaceId = interface->getID();
-                pairDevice(interfaceId, serialNumber);
+                pairDevice(Ccu2::RpcType::bidcos, interfaceId, serialNumber);
             }
+
+			result = interface->invoke(Ccu2::RpcType::hmip, methodName, parameters);
+			if(result->errorStruct)
+			{
+				GD::out.printWarning("Warning: Error calling listDevices for HomeMatic IP on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
+				continue;
+			}
+
+			for(auto& description : *result->arrayValue)
+			{
+				auto addressIterator = description->structValue->find("ADDRESS");
+				if(addressIterator == description->structValue->end()) continue;
+				std::string serialNumber = addressIterator->second->stringValue;
+				BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
+				if(serialNumber.find(':') != std::string::npos) continue;
+				std::string interfaceId = interface->getID();
+				pairDevice(Ccu2::RpcType::hmip, interfaceId, serialNumber);
+			}
         }
 	}
 	catch(const std::exception& ex)
@@ -1280,6 +1234,7 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
                                         settings->type = "ccu2-auto";
                                         settings->host = senderIp;
                                         settings->port = "2001";
+										settings->port2 = "2010";
 
                                         foundInterfaces.emplace(serial);
 
@@ -1376,20 +1331,59 @@ std::shared_ptr<Variable> MyCentral::setInstallMode(BaseLib::PRpcClientInfo clie
         _bl->threadManager.join(_pairingModeThread);
         _stopPairingModeThread = false;
         _timeLeftInPairingMode = 0;
+
+        std::string sgtin;
+        std::string key;
+
+        Ccu2::RpcType rpcType = Ccu2::RpcType::bidcos;
+        if(metadata)
+        {
+            auto metadataIterator = metadata->structValue->find("type");
+            if(metadataIterator != metadata->structValue->end() && metadataIterator->second->stringValue == "hmip") rpcType = Ccu2::RpcType::hmip;
+            metadataIterator = metadata->structValue->find("sgtin");
+            if(metadataIterator != metadata->structValue->end()) sgtin = metadataIterator->second->stringValue;
+            metadataIterator = metadata->structValue->find("key");
+            if(metadataIterator != metadata->structValue->end()) key = metadataIterator->second->stringValue;
+        }
+
         auto interface = GD::interfaces->getDefaultInterface();
         if(interface)
         {
-            std::string methodName("setInstallMode");
-            PArray parameters = std::make_shared<Array>();
-            parameters->reserve(3);
-            parameters->push_back(std::make_shared<Variable>(on));
-            parameters->push_back(std::make_shared<Variable>(duration));
-            parameters->push_back(std::make_shared<Variable>(1));
-            auto result = interface->invoke(methodName, parameters);
-            if(result->errorStruct)
+            if(sgtin.empty() || key.empty())
             {
-                GD::out.printWarning("Warning: Could not call setInstallMode on default CCU: " + result->structValue->at("faultString")->stringValue);
-                return Variable::createError(-1, "Could not enable install mode. See log for more details.");
+                std::string methodName("setInstallMode");
+                PArray parameters = std::make_shared<Array>();
+                parameters->reserve(3);
+                parameters->push_back(std::make_shared<Variable>(on));
+                parameters->push_back(std::make_shared<Variable>(duration));
+                parameters->push_back(std::make_shared<Variable>(1));
+                auto result = interface->invoke(rpcType, methodName, parameters);
+                if(result->errorStruct)
+                {
+                    GD::out.printWarning("Warning: Could not call setInstallMode on default CCU: " + result->structValue->at("faultString")->stringValue);
+                    return Variable::createError(-1, "Could not enable install mode. See log for more details.");
+                }
+            }
+            else
+            {
+                std::string methodName("setInstallModeWithWhitelist");
+                PArray parameters = std::make_shared<Array>();
+                parameters->reserve(3);
+                parameters->push_back(std::make_shared<Variable>(on));
+                parameters->push_back(std::make_shared<Variable>(duration));
+                BaseLib::PVariable whitelistStructs = std::make_shared<Variable>(BaseLib::VariableType::tArray);
+                BaseLib::PVariable whitelistStruct = std::make_shared<Variable>(BaseLib::VariableType::tStruct);
+                whitelistStructs->arrayValue->push_back(whitelistStruct);
+                whitelistStruct->structValue->emplace("ADDRESS", std::make_shared<Variable>(sgtin));
+                whitelistStruct->structValue->emplace("KEY_MODE", std::make_shared<Variable>("LOCAL"));
+                whitelistStruct->structValue->emplace("KEY", std::make_shared<Variable>(key));
+                parameters->push_back(whitelistStructs);
+                auto result = interface->invoke(rpcType, methodName, parameters);
+                if(result->errorStruct)
+                {
+                    GD::out.printWarning("Warning: Could not call setInstallModeWithWhitelist on default CCU: " + result->structValue->at("faultString")->stringValue);
+                    return Variable::createError(-1, "Could not enable install mode. See log for more details.");
+                }
             }
         }
         if(on && duration >= 5)

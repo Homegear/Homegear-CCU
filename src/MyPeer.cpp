@@ -359,11 +359,16 @@ void MyPeer::loadVariables(BaseLib::Systems::ICentral* central, std::shared_ptr<
 		{
 			switch(row->second.at(2)->intValue)
 			{
-			case 19:
-				_physicalInterfaceId = row->second.at(4)->textValue;
-				auto interface = GD::interfaces->getInterface(_physicalInterfaceId);
-				if(!_physicalInterfaceId.empty() && interface) setPhysicalInterface(interface);
-				break;
+                case 19:
+                {
+                    _physicalInterfaceId = row->second.at(4)->textValue;
+                    auto interface = GD::interfaces->getInterface(_physicalInterfaceId);
+                    if(!_physicalInterfaceId.empty() && interface) setPhysicalInterface(interface);
+                    break;
+                }
+                case 20:
+                    _rpcType = (Ccu2::RpcType)row->second.at(3)->intValue;
+                    break;
 			}
 		}
 		if(!_physicalInterface)
@@ -393,6 +398,7 @@ void MyPeer::saveVariables()
 		if(_peerID == 0) return;
 		Peer::saveVariables();
 		saveVariable(19, _physicalInterfaceId);
+		saveVariable(20, (int32_t)_rpcType);
 	}
 	catch(const std::exception& ex)
     {
@@ -560,7 +566,7 @@ PVariable MyPeer::getValueFromDevice(PParameter& parameter, int32_t channel, boo
 			parameters->reserve(2);
 			parameters->push_back(std::make_shared<Variable>(_serialNumber + ":" + std::to_string(channel)));
 			parameters->push_back(std::make_shared<Variable>(parameter->id));
-			return interface->invoke("getValue", parameters);
+			return interface->invoke(_rpcType, "getValue", parameters);
 		}
 	}
 	catch(const std::exception& ex)
@@ -809,7 +815,7 @@ PVariable MyPeer::setValue(BaseLib::PRpcClientInfo clientInfo, uint32_t channel,
 			parameters->push_back(std::make_shared<Variable>(_serialNumber + ":" + std::to_string(channel)));
 			parameters->push_back(std::make_shared<Variable>(valueKey));
 			parameters->push_back(value);
-			auto result = interface->invoke("setValue", parameters);
+			auto result = interface->invoke(_rpcType, "setValue", parameters);
 			if(result->errorStruct) GD::out.printError("Error: Could not execute setValue for peer " + std::to_string(_peerID) + ": " + result->structValue->at("faultString")->stringValue);
 		}
 
