@@ -73,7 +73,7 @@ Ccu2::Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings
     _port = BaseLib::Math::getNumber(settings->port);
     if(_port < 1 || _port > 65535) _port = 2001;
     _port2 = BaseLib::Math::getNumber(settings->port2);
-    if(_port2 < 1 || _port2 > 65535) _port2 = 2010;
+    if((_port2 < 1 || _port2 > 65535) && _port2 != 0) _port2 = 2010;
 }
 
 Ccu2::~Ccu2()
@@ -97,10 +97,13 @@ void Ccu2::init()
         auto result = invoke(RpcType::bidcos, "init", parameters);
         if(result->errorStruct) _out.printError("Error calling \"init\" for HomeMatic BidCoS: " + result->structValue->at("faultString")->stringValue);
 
-        parameters->at(0)->stringValue = "http://" + _listenIp + ":" + std::to_string(_listenPort);
-        parameters->at(1)->stringValue = _hmipIdString;
-        result = invoke(RpcType::hmip, "init", parameters);
-        if(result->errorStruct) _out.printError("Error calling \"init\" for HomeMatic IP: " + result->structValue->at("faultString")->stringValue);
+        if(_hmipClient)
+        {
+            parameters->at(0)->stringValue = "http://" + _listenIp + ":" + std::to_string(_listenPort);
+            parameters->at(1)->stringValue = _hmipIdString;
+            result = invoke(RpcType::hmip, "init", parameters);
+            if(result->errorStruct) _out.printError("Error calling \"init\" for HomeMatic IP: " + result->structValue->at("faultString")->stringValue);
+        }
 
         _out.printInfo("Info: Init complete.");
     }
@@ -184,12 +187,15 @@ void Ccu2::startListening()
             if(!BaseLib::Net::isIp(_listenIp)) _listenIp = BaseLib::Net::getMyIpAddress(_listenIp);
             _out.printInfo("Info: My own IP address is " + _listenIp + ".");
 
-            _out.printInfo("Info: Connecting to IP " + _hostname + " and ports " + std::to_string(_port) + " and " + std::to_string(_port2) + ".");
+            _out.printInfo("Info: Connecting to IP " + _hostname + " and ports " + std::to_string(_port) + (_port2 != 0 ? " and " + std::to_string(_port2) : "") + ".");
 
             _bidcosClient = std::unique_ptr<BaseLib::TcpSocket>(new BaseLib::TcpSocket(_bl, _hostname, std::to_string(_port)));
             _bidcosClient->open();
-            _hmipClient = std::unique_ptr<BaseLib::TcpSocket>(new BaseLib::TcpSocket(_bl, _hostname, std::to_string(_port2)));
-            _hmipClient->open();
+            if(_port2 != 0)
+            {
+                _hmipClient = std::unique_ptr<BaseLib::TcpSocket>(new BaseLib::TcpSocket(_bl, _hostname, std::to_string(_port2)));
+                _hmipClient->open();
+            }
             _ipAddress = _bidcosClient->getIpAddress();
             _noHost = _hostname.empty();
 
@@ -199,8 +205,11 @@ void Ccu2::startListening()
             if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::bidcos);
             else _bl->threadManager.start(_listenThread, true, &Ccu2::listen, this, RpcType::bidcos);
 
-            if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread2, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::hmip);
-            else _bl->threadManager.start(_listenThread2, true, &Ccu2::listen, this, RpcType::hmip);
+            if(_port2 != 0)
+            {
+                if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread2, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::hmip);
+                else _bl->threadManager.start(_listenThread2, true, &Ccu2::listen, this, RpcType::hmip);
+            }
         }
         IPhysicalInterface::startListening();
     }
@@ -596,6 +605,7 @@ BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, B
     try
     {
         if(_stopped) return BaseLib::Variable::createError(-32500, "CCU2 is stopped.");
+        if(rpcType == RpcType::hmip && !_hmipClient) return BaseLib::Variable::createError(-32501, "HomeMatic IP is disabled.");
 
         std::lock_guard<std::mutex> invokeGuard(_invokeMutex);
 
