@@ -48,7 +48,8 @@ public:
     enum class RpcType : int32_t
     {
         bidcos,
-        hmip
+        hmip,
+        wired
     };
 
     Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings);
@@ -70,11 +71,14 @@ private:
     int32_t _listenPort = -1;
     std::string _bidcosIdString;
     std::string _hmipIdString;
+    std::string _wiredIdString;
     std::atomic_long _lastPongBidcos;
     std::atomic_long _lastPongHmip;
+    std::atomic_long _lastPongWired;
     std::shared_ptr<BaseLib::TcpSocket> _server;
     std::unique_ptr<BaseLib::TcpSocket> _bidcosClient;
     std::unique_ptr<BaseLib::TcpSocket> _hmipClient;
+    std::unique_ptr<BaseLib::TcpSocket> _wiredClient;
     std::unique_ptr<BaseLib::Rpc::RpcEncoder> _rpcEncoder;
     std::unique_ptr<BaseLib::Rpc::RpcDecoder> _rpcDecoder;
     std::atomic_bool _hmipNewDevicesCalled;

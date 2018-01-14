@@ -67,6 +67,7 @@ Ccu2::Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings
     _stopped = true;
     _lastPongBidcos.store(0);
     _lastPongHmip.store(0);
+    _lastPongWired.store(0);
 
     if(settings->host.empty()) _noHost = true;
     _hostname = settings->host;
@@ -100,6 +101,11 @@ void Ccu2::init()
         parameters->at(0)->stringValue = "http://" + _listenIp + ":" + std::to_string(_listenPort);
         parameters->at(1)->stringValue = _hmipIdString;
         result = invoke(RpcType::hmip, "init", parameters);
+        if(result->errorStruct) _out.printError("Error calling \"init\" for HomeMatic IP: " + result->structValue->at("faultString")->stringValue);
+
+        parameters->at(0)->stringValue = "http://" + _listenIp + ":" + std::to_string(_listenPort);
+        parameters->at(1)->stringValue = _wiredIdString;
+        result = invoke(RpcType::wired, "init", parameters);
         if(result->errorStruct) _out.printError("Error calling \"init\" for HomeMatic IP: " + result->structValue->at("faultString")->stringValue);
 
         _out.printInfo("Info: Init complete.");
