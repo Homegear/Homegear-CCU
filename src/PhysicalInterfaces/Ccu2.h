@@ -60,7 +60,7 @@ public:
     void sendPacket(std::shared_ptr<BaseLib::Systems::Packet> packet) {};
     BaseLib::PVariable invoke(RpcType rpcType, std::string methodName, BaseLib::PArray parameters);
 
-    virtual bool isOpen() { return _bidcosClient && _bidcosClient->connected() && _hmipClient && _hmipClient->connected(); }
+    virtual bool isOpen() { return _bidcosClient && _bidcosClient->connected() && (_port2 == 0 || (_hmipClient && _hmipClient->connected())); }
 private:
     BaseLib::Output _out;
     bool _noHost = true;
