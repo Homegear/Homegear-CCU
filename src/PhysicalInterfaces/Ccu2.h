@@ -60,13 +60,14 @@ public:
     void sendPacket(std::shared_ptr<BaseLib::Systems::Packet> packet) {};
     BaseLib::PVariable invoke(RpcType rpcType, std::string methodName, BaseLib::PArray parameters);
 
-    virtual bool isOpen() { return _bidcosClient && _bidcosClient->connected() && (_port2 == 0 || (_hmipClient && _hmipClient->connected())); }
+    virtual bool isOpen() { return _bidcosClient && _bidcosClient->connected() && (_port2 == 0 || (_hmipClient && _hmipClient->connected())) && (_port3 == 0 || (_wiredClient && _wiredClient->connected())); }
 private:
     BaseLib::Output _out;
     bool _noHost = true;
     std::atomic_bool _stopped;
     int32_t _port = 2001;
     int32_t _port2 = 2010;
+    int32_t _port3 = 2000;
     std::string _listenIp;
     int32_t _listenPort = -1;
     std::string _bidcosIdString;
@@ -89,6 +90,7 @@ private:
     std::unique_ptr<BaseLib::Rpc::XmlrpcDecoder> _xmlrpcDecoder;
 
     std::thread _listenThread2;
+    std::thread _listenThread3;
     std::thread _initThread;
     std::thread _pingThread;
 

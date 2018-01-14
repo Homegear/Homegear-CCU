@@ -63,6 +63,7 @@ void MyCentral::dispose(bool wait)
 		GD::out.printDebug("Removing device " + std::to_string(_deviceId) + " from physical device's event queue...");
         GD::interfaces->removeEventHandlers();
 
+        _stopWorkerThread = true;
 		GD::out.printDebug("Debug: Waiting for worker thread of device " + std::to_string(_deviceId) + "...");
 		_bl->threadManager.join(_workerThread);
 	}
@@ -1235,6 +1236,7 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
                                         settings->host = senderIp;
                                         settings->port = "2001";
 										settings->port2 = "2010";
+										settings->port3 = "2000";
 
                                         foundInterfaces.emplace(serial);
 
