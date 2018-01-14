@@ -222,7 +222,6 @@ void Ccu2::startListening()
                 {
                     _out.printWarning("Could not connect to HomeMatic IP port. Assuming HomeMatic IP is not available.");
                     _hmipClient.reset();
-                    _port2 = 0;
                 }
             }
             if(_port3 != 0)
@@ -236,7 +235,6 @@ void Ccu2::startListening()
                 {
                     _out.printWarning("Could not connect to HomeMatic Wired port. Assuming HomeMatic Wired is not available.");
                     _wiredClient.reset();
-                    _port3 = 0;
                 }
             }
             _ipAddress = _bidcosClient->getIpAddress();
@@ -249,13 +247,13 @@ void Ccu2::startListening()
             if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::bidcos);
             else _bl->threadManager.start(_listenThread, true, &Ccu2::listen, this, RpcType::bidcos);
 
-            if(_port2 != 0)
+            if(_hmipClient && _port2 != 0)
             {
                 if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread2, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::hmip);
                 else _bl->threadManager.start(_listenThread2, true, &Ccu2::listen, this, RpcType::hmip);
             }
 
-            if(_port3 != 0)
+            if(_wiredClient && _port3 != 0)
             {
                 if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread3, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::wired);
                 else _bl->threadManager.start(_listenThread3, true, &Ccu2::listen, this, RpcType::wired);
@@ -655,6 +653,44 @@ void Ccu2::ping()
             {
                 _out.printError("Error: No keep alive response received. Reinitializing...");
                 init();
+            }
+
+            if(_port2 != 0 && !_hmipClient)
+            {
+                try
+                {
+                    _hmipClient = std::unique_ptr<BaseLib::TcpSocket>(new BaseLib::TcpSocket(_bl, _hostname, std::to_string(_port2)));
+                    _hmipClient->open();
+                }
+                catch(BaseLib::Exception& ex)
+                {
+                    _hmipClient.reset();
+                }
+
+                if(_hmipClient)
+                {
+                    if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread2, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::hmip);
+                    else _bl->threadManager.start(_listenThread2, true, &Ccu2::listen, this, RpcType::hmip);
+                }
+            }
+
+            if(_port3 != 0 && !_wiredClient)
+            {
+                try
+                {
+                    _wiredClient = std::unique_ptr<BaseLib::TcpSocket>(new BaseLib::TcpSocket(_bl, _hostname, std::to_string(_port3)));
+                    _wiredClient->open();
+                }
+                catch(BaseLib::Exception& ex)
+                {
+                    _wiredClient.reset();
+                }
+
+                if(_wiredClient)
+                {
+                    if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread3, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::wired);
+                    else _bl->threadManager.start(_listenThread3, true, &Ccu2::listen, this, RpcType::wired);
+                }
             }
         }
     }
