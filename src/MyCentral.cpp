@@ -63,6 +63,7 @@ void MyCentral::dispose(bool wait)
 		GD::out.printDebug("Removing device " + std::to_string(_deviceId) + " from physical device's event queue...");
         GD::interfaces->removeEventHandlers();
 
+        _stopWorkerThread = true;
 		GD::out.printDebug("Debug: Waiting for worker thread of device " + std::to_string(_deviceId) + "...");
 		_bl->threadManager.join(_workerThread);
 	}
@@ -530,7 +531,7 @@ std::string MyCentral::handleCliCommand(std::string command)
 				if(duration < 5 || duration > 3600) return "Invalid duration. Duration has to be greater than 5 and less than 3600.\n";
 			}
 
-			setInstallMode(nullptr, true, duration, false);
+			setInstallMode(nullptr, true, duration, nullptr, false);
 			stringStream << "Pairing mode enabled." << std::endl;
 			return stringStream.str();
 		}
@@ -545,7 +546,7 @@ std::string MyCentral::handleCliCommand(std::string command)
 				return stringStream.str();
 			}
 
-			setInstallMode(nullptr, false, -1, false);
+			setInstallMode(nullptr, false, -1, nullptr, false);
 			stringStream << "Pairing mode disabled." << std::endl;
 			return stringStream.str();
 		}
@@ -1235,6 +1236,7 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
                                         settings->host = senderIp;
                                         settings->port = "2001";
 										settings->port2 = "2010";
+										settings->port3 = "2000";
 
                                         foundInterfaces.emplace(serial);
 

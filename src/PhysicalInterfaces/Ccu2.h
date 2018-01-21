@@ -48,7 +48,8 @@ public:
     enum class RpcType : int32_t
     {
         bidcos,
-        hmip
+        hmip,
+        wired
     };
 
     Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings);
@@ -59,22 +60,26 @@ public:
     void sendPacket(std::shared_ptr<BaseLib::Systems::Packet> packet) {};
     BaseLib::PVariable invoke(RpcType rpcType, std::string methodName, BaseLib::PArray parameters);
 
-    virtual bool isOpen() { return _bidcosClient && _bidcosClient->connected() && _hmipClient && _hmipClient->connected(); }
+    virtual bool isOpen() { return _bidcosClient && _bidcosClient->connected() && (!_hmipClient || _hmipClient->connected()) && (!_wiredClient || _wiredClient->connected()); }
 private:
     BaseLib::Output _out;
     bool _noHost = true;
     std::atomic_bool _stopped;
     int32_t _port = 2001;
     int32_t _port2 = 2010;
+    int32_t _port3 = 2000;
     std::string _listenIp;
     int32_t _listenPort = -1;
     std::string _bidcosIdString;
     std::string _hmipIdString;
+    std::string _wiredIdString;
     std::atomic_long _lastPongBidcos;
     std::atomic_long _lastPongHmip;
+    std::atomic_long _lastPongWired;
     std::shared_ptr<BaseLib::TcpSocket> _server;
     std::unique_ptr<BaseLib::TcpSocket> _bidcosClient;
     std::unique_ptr<BaseLib::TcpSocket> _hmipClient;
+    std::unique_ptr<BaseLib::TcpSocket> _wiredClient;
     std::unique_ptr<BaseLib::Rpc::RpcEncoder> _rpcEncoder;
     std::unique_ptr<BaseLib::Rpc::RpcDecoder> _rpcDecoder;
     std::atomic_bool _hmipNewDevicesCalled;
@@ -85,6 +90,7 @@ private:
     std::unique_ptr<BaseLib::Rpc::XmlrpcDecoder> _xmlrpcDecoder;
 
     std::thread _listenThread2;
+    std::thread _listenThread3;
     std::thread _initThread;
     std::thread _pingThread;
 

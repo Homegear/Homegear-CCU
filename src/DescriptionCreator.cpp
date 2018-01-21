@@ -37,9 +37,10 @@ DescriptionCreator::PeerInfo DescriptionCreator::createDescription(Ccu2::RpcType
         if(descriptionIterator != description->structValue->end()) device->version = descriptionIterator->second->integerValue;
 
         PSupportedDevice supportedDevice = std::make_shared<SupportedDevice>(GD::bl, device.get());
-        supportedDevice->id = serialNumber;
         descriptionIterator = description->structValue->find("TYPE");
-        if(descriptionIterator != description->structValue->end()) supportedDevice->description = descriptionIterator->second->stringValue;
+        if(descriptionIterator != description->structValue->end()) supportedDevice->id = descriptionIterator->second->stringValue;
+        if(supportedDevice->id.empty()) supportedDevice->id = serialNumber;
+        supportedDevice->description = supportedDevice->id;
         supportedDevice->typeNumber = typeId;
         device->supportedDevices.push_back(supportedDevice);
 

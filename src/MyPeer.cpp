@@ -562,11 +562,23 @@ PVariable MyPeer::getValueFromDevice(PParameter& parameter, int32_t channel, boo
 		}
 		else
 		{
+            std::unordered_map<uint32_t, std::unordered_map<std::string, BaseLib::Systems::RpcConfigurationParameter>>::iterator channelIterator = valuesCentral.find(channel);
+            if(channelIterator == valuesCentral.end()) return Variable::createError(-2, "Unknown channel.");
+            std::unordered_map<std::string, BaseLib::Systems::RpcConfigurationParameter>::iterator parameterIterator = channelIterator->second.find(parameter->id);
+            if(parameterIterator == channelIterator->second.end()) return Variable::createError(-5, "Unknown parameter.");
+
 			BaseLib::PArray parameters = std::make_shared<Array>();
 			parameters->reserve(2);
 			parameters->push_back(std::make_shared<Variable>(_serialNumber + ":" + std::to_string(channel)));
 			parameters->push_back(std::make_shared<Variable>(parameter->id));
-			return interface->invoke(_rpcType, "getValue", parameters);
+			auto result = interface->invoke(_rpcType, "getValue", parameters);
+            if(result->errorStruct) return result;
+
+            std::vector<uint8_t> parameterData;
+            parameter->convertToPacket(result, parameterData);
+            parameterIterator->second.setBinaryData(parameterData);
+            if(parameterIterator->second.databaseId > 0) saveParameter(parameterIterator->second.databaseId, parameterData);
+            else saveParameter(0, ParameterGroup::Type::Enum::variables, channel, parameter->id, parameterData);
 		}
 	}
 	catch(const std::exception& ex)
