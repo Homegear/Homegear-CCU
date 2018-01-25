@@ -55,6 +55,11 @@ public:
     Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings);
     virtual ~Ccu2();
 
+    std::string getSerialNumber() { return _settings->serialNumber; }
+    std::string getPort1() { return _settings->port; }
+    std::string getPort2() { return _settings->port2; }
+    std::string getPort3() { return _settings->port3; }
+
     void startListening();
     void stopListening();
     void sendPacket(std::shared_ptr<BaseLib::Systems::Packet> packet) {};

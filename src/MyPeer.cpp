@@ -165,9 +165,9 @@ std::string MyPeer::handleCliCommand(std::string command)
 		{
 			stringStream << "List of commands:" << std::endl << std::endl;
 			stringStream << "For more information about the individual command type: COMMAND help" << std::endl << std::endl;
-			stringStream << "unselect\t\tUnselect this peer" << std::endl;
-			stringStream << "channel count\t\tPrint the number of channels of this peer" << std::endl;
-			stringStream << "config print\t\tPrints all configuration parameters and their values" << std::endl;
+			stringStream << "unselect      Unselect this peer" << std::endl;
+			stringStream << "channel count Print the number of channels of this peer" << std::endl;
+			stringStream << "config print  Prints all configuration parameters and their values" << std::endl;
 			return stringStream.str();
 		}
 		if(command.compare(0, 13, "channel count") == 0)

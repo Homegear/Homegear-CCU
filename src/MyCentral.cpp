@@ -1288,16 +1288,29 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
                                         std::string senderIp(ipStringBuffer);
 
                                         if(serial.empty() || senderIp.empty()) continue;
-                                        auto interface = GD::interfaces->getInterface(serial);
+                                        auto interface = GD::interfaces->getInterfaceBySerial(serial);
                                         if(interface && interface->getHostname() == senderIp) continue;
 
                                         Systems::PPhysicalInterfaceSettings settings = std::make_shared<Systems::PhysicalInterfaceSettings>();
                                         settings->id = serial;
-                                        settings->type = "ccu2-auto";
-                                        settings->host = senderIp;
-                                        settings->port = "2001";
-										settings->port2 = "2010";
-										settings->port3 = "2000";
+                                        if(interface)
+                                        {
+                                            settings->type = interface->getType();
+                                            settings->host = senderIp;
+                                            settings->serialNumber = serial;
+                                            settings->port = interface->getPort1();
+                                            settings->port2 = interface->getPort2();
+                                            settings->port3 = interface->getPort3();
+                                        }
+                                        else
+                                        {
+                                            settings->type = "ccu2-auto";
+                                            settings->host = senderIp;
+                                            settings->serialNumber = serial;
+                                            settings->port = "2001";
+                                            settings->port2 = "2010";
+                                            settings->port3 = "2000";
+                                        }
 
                                         foundInterfaces.emplace(serial);
 

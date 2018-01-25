@@ -151,6 +151,18 @@ std::shared_ptr<Ccu2> Interfaces::getInterfaceByIp(std::string& ipAddress)
     return std::shared_ptr<Ccu2>();
 }
 
+std::shared_ptr<Ccu2> Interfaces::getInterfaceBySerial(std::string& serial)
+{
+    std::lock_guard<std::mutex> interfaceGuard(_physicalInterfacesMutex);
+    for(auto interfaceBase : _physicalInterfaces)
+    {
+        std::shared_ptr<Ccu2> interface(std::dynamic_pointer_cast<Ccu2>(interfaceBase.second));
+        if(!interface) continue;
+        if(interface->getSerialNumber() == serial) return interface;
+    }
+    return std::shared_ptr<Ccu2>();
+}
+
 void Interfaces::removeUnknownInterfaces(std::set<std::string>& knownInterfaces)
 {
     try
@@ -167,6 +179,8 @@ void Interfaces::removeUnknownInterfaces(std::set<std::string>& knownInterfaces)
                 std::string name = interfaceBase.first + ".devicetype";
                 GD::family->deleteFamilySettingFromDatabase(name);
                 name = interfaceBase.first + ".host";
+                GD::family->deleteFamilySettingFromDatabase(name);
+                name = interfaceBase.first + ".serialnumber";
                 GD::family->deleteFamilySettingFromDatabase(name);
                 name = interfaceBase.first + ".port";
                 GD::family->deleteFamilySettingFromDatabase(name);
@@ -222,6 +236,8 @@ std::shared_ptr<Ccu2> Interfaces::addInterface(Systems::PPhysicalInterfaceSettin
                 GD::family->setFamilySetting(name, settings->type);
                 name = settings->id + ".host";
                 GD::family->setFamilySetting(name, settings->host);
+                name = settings->id + ".serialnumber";
+                GD::family->setFamilySetting(name, settings->serialNumber);
                 name = settings->id + ".port";
                 GD::family->setFamilySetting(name, settings->port);
                 name = settings->id + ".port2";
