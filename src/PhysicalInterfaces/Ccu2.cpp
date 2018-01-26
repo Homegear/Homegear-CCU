@@ -754,7 +754,7 @@ BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, B
         else if(rpcType == RpcType::wired) _wiredClient->proofwrite(data);
 
         std::unique_lock<std::mutex> waitLock(_requestWaitMutex);
-        _requestConditionVariable.wait_for(waitLock, std::chrono::milliseconds(30000), [&]
+        _requestConditionVariable.wait_for(waitLock, std::chrono::milliseconds(60000), [&]
         {
             std::lock_guard<std::mutex> responseGuard(_responseMutex);
             return _response->type != BaseLib::VariableType::tVoid || _stopped;
