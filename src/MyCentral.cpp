@@ -60,6 +60,11 @@ void MyCentral::dispose(bool wait)
             _bl->threadManager.join(_pairingModeThread);
         }
 
+		{
+			std::lock_guard<std::mutex> searchDevicesGuard(_searchDevicesThreadMutex);
+			_bl->threadManager.join(_searchDevicesThread);
+		}
+
 		GD::out.printDebug("Removing device " + std::to_string(_deviceId) + " from physical device's event queue...");
         GD::interfaces->removeEventHandlers();
 
@@ -88,6 +93,7 @@ void MyCentral::init()
 		_shuttingDown = false;
 		_stopWorkerThread = false;
         _pairing = false;
+        _searching = false;
 
         GD::interfaces->addEventHandlers((BaseLib::Systems::IPhysicalInterface::IPhysicalInterfaceEventSink*)this);
 
@@ -316,57 +322,69 @@ void MyCentral::pairDevice(Ccu2::RpcType rpcType, std::string& interfaceId, std:
         std::lock_guard<std::mutex> pairGuard(_pairMutex);
         GD::out.printInfo("Info: Adding device " + serialNumber + "...");
 
-        uint64_t peerToDelete = 0;
-		uint32_t peerToDeleteType = 0;
+        bool newPeer = true;
+        auto peer = getPeer(serialNumber);
+        std::unique_lock<std::mutex> lockGuard(_peersMutex);
+        if(peer)
         {
-            std::lock_guard<std::mutex> peersGuard(_peersMutex);
-            auto peersIterator = _peersBySerial.find(serialNumber);
-            if(peersIterator != _peersBySerial.end())
-            {
-                peerToDelete = peersIterator->second->getID();
-				peerToDeleteType = peersIterator->second->getDeviceType();
-            }
+            newPeer = false;
+            if(_peersBySerial.find(peer->getSerialNumber()) != _peersBySerial.end()) _peersBySerial.erase(peer->getSerialNumber());
+            if(_peersById.find(peer->getID()) != _peersById.end()) _peersById.erase(peer->getID());
         }
-
-        if(peerToDelete != 0)
-        {
-            GD::out.printInfo("Info: Deleting old peer.");
-            deletePeer(peerToDelete);
-        }
+        lockGuard.unlock();
 
 		auto knownTypeIds = GD::family->getRpcDevices()->getKnownTypeNumbers();
-        auto peerInfo = _descriptionCreator.createDescription(rpcType, interfaceId, serialNumber, peerToDeleteType, knownTypeIds);
+        auto peerInfo = _descriptionCreator.createDescription(rpcType, interfaceId, serialNumber, peer ? peer->getDeviceType() : 0, knownTypeIds);
         if(peerInfo.serialNumber.empty()) return; //Error
         GD::family->reloadRpcDevices();
 
-        PMyPeer peer = createPeer(peerInfo.type, peerInfo.firmwareVersion, peerInfo.serialNumber, true);
         if(!peer)
         {
-            GD::out.printError("Error: Could not add device with type " + BaseLib::HelperFunctions::getHexString(peerInfo.type) + ". No matching XML file was found.");
-            return;
+            peer = createPeer(peerInfo.type, peerInfo.firmwareVersion, peerInfo.serialNumber, true);
+            if(!peer)
+            {
+                GD::out.printError("Error: Could not add device with type " + BaseLib::HelperFunctions::getHexString(peerInfo.type) + ". No matching XML file was found.");
+                return;
+            }
+
+            peer->initializeCentralConfig();
+            peer->setPhysicalInterfaceId(interfaceId);
+            peer->setRpcType(rpcType);
         }
-
-        if(peerToDelete != 0 && peerToDelete != peer->getID()) peer->setId(nullptr, peerToDelete);
-        peer->initializeCentralConfig();
-        peer->setPhysicalInterfaceId(interfaceId);
-        peer->setRpcType(rpcType);
-
+        else
         {
-            std::lock_guard<std::mutex> peersGuard(_peersMutex);
-            _peersBySerial[peer->getSerialNumber()] = peer;
-            _peersById[peer->getID()] = peer;
+            peer->setRpcDevice(GD::family->getRpcDevices()->find(peerInfo.type, peerInfo.firmwareVersion, -1));
+            if(!peer->getRpcDevice())
+            {
+                GD::out.printError("Error: RPC device could not be found anymore.");
+                return;
+            }
         }
 
-        GD::out.printInfo("Info: Device successfully added. Peer ID is: " + std::to_string(peer->getID()));
+        lockGuard.lock();
+        _peersBySerial[peer->getSerialNumber()] = peer;
+        _peersById[peer->getID()] = peer;
+        lockGuard.unlock();
 
-        PVariable deviceDescriptions(new Variable(VariableType::tArray));
-        std::shared_ptr<std::vector<PVariable>> descriptions = peer->getDeviceDescriptions(nullptr, true, std::map<std::string, bool>());
-        if(!descriptions) return;
-        for(std::vector<PVariable>::iterator j = descriptions->begin(); j != descriptions->end(); ++j)
+        if(newPeer)
         {
-            deviceDescriptions->arrayValue->push_back(*j);
+            GD::out.printInfo("Info: Device successfully added. Peer ID is: " + std::to_string(peer->getID()));
+
+            PVariable deviceDescriptions(new Variable(VariableType::tArray));
+            std::shared_ptr<std::vector<PVariable>> descriptions = peer->getDeviceDescriptions(nullptr, true, std::map<std::string, bool>());
+            if(!descriptions) return;
+            for(std::vector<PVariable>::iterator j = descriptions->begin(); j != descriptions->end(); ++j)
+            {
+                deviceDescriptions->arrayValue->push_back(*j);
+            }
+            raiseRPCNewDevices(deviceDescriptions);
         }
-        raiseRPCNewDevices(deviceDescriptions);
+        else
+        {
+            GD::out.printInfo("Info: Peer " + std::to_string(peer->getID()) + " successfully updated.");
+
+            raiseRPCUpdateDevice(peer->getID(), 0, peer->getSerialNumber() + ":" + std::to_string(0), 0);
+        }
     }
     catch(const std::exception& ex)
     {
@@ -508,7 +526,7 @@ std::string MyCentral::handleCliCommand(std::string command)
                 return stringStream.str();
             }
 
-            searchDevices(nullptr);
+            searchDevicesThread();
 
             stringStream << "Search completed." << std::endl;
             return stringStream.str();
@@ -1035,10 +1053,10 @@ PVariable MyCentral::putParamset(BaseLib::PRpcClientInfo clientInfo, uint64_t pe
     return Variable::createError(-32500, "Unknown application error.");
 }
 
-PVariable MyCentral::searchDevices(BaseLib::PRpcClientInfo clientInfo)
+void MyCentral::searchDevicesThread()
 {
-	try
-	{
+    try
+    {
         auto interfaces = GD::interfaces->getInterfaces();
         for(auto& interface : interfaces)
         {
@@ -1062,24 +1080,67 @@ PVariable MyCentral::searchDevices(BaseLib::PRpcClientInfo clientInfo)
                 pairDevice(Ccu2::RpcType::bidcos, interfaceId, serialNumber);
             }
 
-			result = interface->invoke(Ccu2::RpcType::hmip, methodName, parameters);
-			if(result->errorStruct)
-			{
-				GD::out.printWarning("Warning: Error calling listDevices for HomeMatic IP on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
-				continue;
-			}
+            result = interface->invoke(Ccu2::RpcType::hmip, methodName, parameters);
+            if(result->errorStruct)
+            {
+                GD::out.printWarning("Warning: Error calling listDevices for HomeMatic IP on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
+                continue;
+            }
 
-			for(auto& description : *result->arrayValue)
-			{
-				auto addressIterator = description->structValue->find("ADDRESS");
-				if(addressIterator == description->structValue->end()) continue;
-				std::string serialNumber = addressIterator->second->stringValue;
-				BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
-				if(serialNumber.find(':') != std::string::npos) continue;
-				std::string interfaceId = interface->getID();
-				pairDevice(Ccu2::RpcType::hmip, interfaceId, serialNumber);
-			}
+            for(auto& description : *result->arrayValue)
+            {
+                auto addressIterator = description->structValue->find("ADDRESS");
+                if(addressIterator == description->structValue->end()) continue;
+                std::string serialNumber = addressIterator->second->stringValue;
+                BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
+                if(serialNumber.find(':') != std::string::npos) continue;
+                std::string interfaceId = interface->getID();
+                pairDevice(Ccu2::RpcType::hmip, interfaceId, serialNumber);
+            }
+
+            result = interface->invoke(Ccu2::RpcType::wired, methodName, parameters);
+            if(result->errorStruct)
+            {
+                GD::out.printWarning("Warning: Error calling listDevices for HomeMatic Wired on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
+                continue;
+            }
+
+            for(auto& description : *result->arrayValue)
+            {
+                auto addressIterator = description->structValue->find("ADDRESS");
+                if(addressIterator == description->structValue->end()) continue;
+                std::string serialNumber = addressIterator->second->stringValue;
+                BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
+                if(serialNumber.find(':') != std::string::npos) continue;
+                std::string interfaceId = interface->getID();
+                pairDevice(Ccu2::RpcType::wired, interfaceId, serialNumber);
+            }
         }
+    }
+    catch(const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    _searching = false;
+}
+
+PVariable MyCentral::searchDevices(BaseLib::PRpcClientInfo clientInfo)
+{
+	try
+	{
+        if(_searching) return std::make_shared<BaseLib::Variable>(0);
+        _searching = true;
+        std::lock_guard<std::mutex> searchDevicesGuard(_searchDevicesThreadMutex);
+        _bl->threadManager.start(_searchDevicesThread, false, &MyCentral::searchDevicesThread, this);
+        return std::make_shared<BaseLib::Variable>(-2);
 	}
 	catch(const std::exception& ex)
 	{
@@ -1227,16 +1288,29 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
                                         std::string senderIp(ipStringBuffer);
 
                                         if(serial.empty() || senderIp.empty()) continue;
-                                        auto interface = GD::interfaces->getInterface(serial);
+                                        auto interface = GD::interfaces->getInterfaceBySerial(serial);
                                         if(interface && interface->getHostname() == senderIp) continue;
 
                                         Systems::PPhysicalInterfaceSettings settings = std::make_shared<Systems::PhysicalInterfaceSettings>();
                                         settings->id = serial;
-                                        settings->type = "ccu2-auto";
-                                        settings->host = senderIp;
-                                        settings->port = "2001";
-										settings->port2 = "2010";
-										settings->port3 = "2000";
+                                        if(interface)
+                                        {
+                                            settings->type = interface->getType();
+                                            settings->host = senderIp;
+                                            settings->serialNumber = serial;
+                                            settings->port = interface->getPort1();
+                                            settings->port2 = interface->getPort2();
+                                            settings->port3 = interface->getPort3();
+                                        }
+                                        else
+                                        {
+                                            settings->type = "ccu2-auto";
+                                            settings->host = senderIp;
+                                            settings->serialNumber = serial;
+                                            settings->port = "2001";
+                                            settings->port2 = "2010";
+                                            settings->port3 = "2000";
+                                        }
 
                                         foundInterfaces.emplace(serial);
 
@@ -1396,7 +1470,7 @@ std::shared_ptr<Variable> MyCentral::setInstallMode(BaseLib::PRpcClientInfo clie
         if(on && duration >= 5)
         {
             _timeLeftInPairingMode = duration; //It's important to set it here, because the thread often doesn't completely initialize before getInstallMode requests _timeLeftInPairingMode
-            _bl->threadManager.start(_pairingModeThread, true, &MyCentral::pairingModeTimer, this, duration, debugOutput);
+            _bl->threadManager.start(_pairingModeThread, false, &MyCentral::pairingModeTimer, this, duration, debugOutput);
         }
         return PVariable(new Variable(VariableType::tVoid));
     }

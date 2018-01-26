@@ -51,6 +51,7 @@ public:
     std::shared_ptr<Ccu2> getDefaultInterface();
     std::shared_ptr<Ccu2> getInterface(std::string& name);
     std::shared_ptr<Ccu2> getInterfaceByIp(std::string& ipAddress);
+	std::shared_ptr<Ccu2> getInterfaceBySerial(std::string& serial);
     std::vector<std::shared_ptr<Ccu2>> getInterfaces();
 protected:
     std::shared_ptr<Ccu2> _defaultPhysicalInterface;

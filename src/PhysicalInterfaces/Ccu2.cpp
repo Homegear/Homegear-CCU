@@ -50,6 +50,7 @@ Ccu2::Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings
     _http.reset(new BaseLib::Http());
 
     _hmipNewDevicesCalled = false;
+    _wiredNewDevicesCalled = false;
     _isBinaryRpc = false;
 
     _out.init(GD::bl);
@@ -94,6 +95,9 @@ void Ccu2::init()
 {
     try
     {
+        _hmipNewDevicesCalled = false;
+        _wiredNewDevicesCalled = false;
+
         BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
         parameters->reserve(2);
         parameters->push_back(std::make_shared<BaseLib::Variable>("binary://" + _listenIp + ":" + std::to_string(_listenPort)));
@@ -445,17 +449,24 @@ void Ccu2::processPacket(int32_t clientId, bool binaryRpc, std::string& methodNa
         }
         else if(methodName == "newDevices")
         {
-            _out.printInfo("Info: CCU is calling RPC method " + methodName);
             if(!binaryRpc) _hmipNewDevicesCalled = true;
-            if(!binaryRpc) parameters->at(0)->integerValue = (int32_t) RpcType::hmip;
+            if(!binaryRpc) parameters->at(0)->integerValue = (int32_t)RpcType::hmip;
             else if(parameters->at(0)->stringValue == _bidcosIdString) parameters->at(0)->integerValue = (int32_t) RpcType::bidcos;
-            else if(parameters->at(0)->stringValue == _wiredIdString) parameters->at(0)->integerValue = (int32_t) RpcType::wired;
+            else if(parameters->at(0)->stringValue == _wiredIdString)
+            {
+                parameters->at(0)->integerValue = (int32_t)RpcType::wired;
+                _wiredNewDevicesCalled = true;
+            }
+            _out.printInfo("Info: CCU (" + std::to_string(parameters->at(0)->integerValue) + ") is calling RPC method " + methodName);
             PMyPacket packet = std::make_shared<MyPacket>(methodName, parameters);
             raisePacketReceived(packet);
         }
         else if(methodName == "system.listMethods" || methodName == "listDevices")
         {
-            _out.printInfo("Info: CCU is calling RPC method " + methodName);
+            if(!binaryRpc) parameters->at(0)->integerValue = (int32_t)RpcType::hmip;
+            else if(parameters->at(0)->stringValue == _bidcosIdString) parameters->at(0)->integerValue = (int32_t) RpcType::bidcos;
+            else if(parameters->at(0)->stringValue == _wiredIdString) parameters->at(0)->integerValue = (int32_t)RpcType::wired;
+            _out.printInfo("Info: CCU (" + std::to_string(parameters->at(0)->integerValue) + ") is calling RPC method " + methodName);
             response->setType(BaseLib::VariableType::tArray);
         }
         else
@@ -638,20 +649,21 @@ void Ccu2::ping()
                 continue;
             }
 
-            if(_wiredClient)
+            if(BaseLib::HelperFunctions::getTime() - _lastPongBidcos.load() > 70000)
             {
-                parameters->at(0)->stringValue = _wiredIdString;
-                result = invoke(RpcType::wired, "ping", parameters);
-                if(result->errorStruct)
-                {
-                    _out.printError("Error calling \"ping\" (Wired): " + result->structValue->at("faultString")->stringValue);
-                    continue;
-                }
+                _out.printError("Error: No keep alive response received (BidCoS). Reinitializing...");
+                init();
             }
 
-            if(BaseLib::HelperFunctions::getTime() - _lastPongBidcos.load() > 70000 || (_wiredClient && BaseLib::HelperFunctions::getTime() - _lastPongWired.load() > 70000) || (_hmipNewDevicesCalled && BaseLib::HelperFunctions::getTime() - _lastPongHmip.load() > 600000))
+            if(_wiredNewDevicesCalled && BaseLib::HelperFunctions::getTime() - _lastPongWired.load() > 3600000)
             {
-                _out.printError("Error: No keep alive response received. Reinitializing...");
+                _out.printError("Error: No keep alive received (Wired). Reinitializing...");
+                init();
+            }
+
+            if(_hmipNewDevicesCalled && BaseLib::HelperFunctions::getTime() - _lastPongHmip.load() > 600000)
+            {
+                _out.printError("Error: No keep alive received (HM-IP). Reinitializing...");
                 init();
             }
 
@@ -719,7 +731,7 @@ BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, B
         std::lock_guard<std::mutex> invokeGuard(_invokeMutex);
 
         std::vector<char> data;
-        if(rpcType == RpcType::bidcos) _rpcEncoder->encodeRequest(methodName, parameters, data);
+        if(rpcType == RpcType::bidcos || rpcType == RpcType::wired) _rpcEncoder->encodeRequest(methodName, parameters, data);
         else if(rpcType == RpcType::hmip)
         {
             std::vector<char> xmlData;

@@ -77,6 +77,9 @@ protected:
     std::atomic_bool _stopPairingModeThread;
     std::mutex _pairingModeThreadMutex;
     std::thread _pairingModeThread;
+	std::atomic_bool _searching;
+	std::mutex _searchDevicesThreadMutex;
+	std::thread _searchDevicesThread;
 
     std::mutex _pairMutex;
     DescriptionCreator _descriptionCreator;
@@ -92,6 +95,7 @@ protected:
 
     void pairingModeTimer(int32_t duration, bool debugOutput = true);
     void pairDevice(Ccu2::RpcType rpcType, std::string& interfaceId, std::string& serialNumber);
+	void searchDevicesThread();
 };
 
 }

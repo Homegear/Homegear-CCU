@@ -55,6 +55,11 @@ public:
     Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings);
     virtual ~Ccu2();
 
+    std::string getSerialNumber() { return _settings->serialNumber; }
+    std::string getPort1() { return _settings->port; }
+    std::string getPort2() { return _settings->port2; }
+    std::string getPort3() { return _settings->port3; }
+
     void startListening();
     void stopListening();
     void sendPacket(std::shared_ptr<BaseLib::Systems::Packet> packet) {};
@@ -83,6 +88,7 @@ private:
     std::unique_ptr<BaseLib::Rpc::RpcEncoder> _rpcEncoder;
     std::unique_ptr<BaseLib::Rpc::RpcDecoder> _rpcDecoder;
     std::atomic_bool _hmipNewDevicesCalled;
+    std::atomic_bool _wiredNewDevicesCalled;
     std::atomic_bool _isBinaryRpc;
     std::unique_ptr<BaseLib::Rpc::BinaryRpc> _binaryRpc;
     std::unique_ptr<BaseLib::Http> _http;
