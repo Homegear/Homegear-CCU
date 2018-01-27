@@ -102,15 +102,107 @@ std::shared_ptr<BaseLib::Systems::ICentral> MyFamily::initializeCentral(uint32_t
 	return std::shared_ptr<MyCentral>(new MyCentral(deviceId, serialNumber, this));
 }
 
-PVariable MyFamily::getPairingMethods()
+PVariable MyFamily::getPairingInfo()
 {
 	try
 	{
-		if(!_central) return PVariable(new Variable(VariableType::tArray));
-		PVariable array(new Variable(VariableType::tArray));
-		array->arrayValue->push_back(PVariable(new Variable(std::string("searchDevices"))));
-		array->arrayValue->push_back(PVariable(new Variable(std::string("setInstallMode"))));
-		return array;
+		if(!_central) return std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+		PVariable info = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+
+        //{{{ General
+            info->structValue->emplace("searchInterfaces", std::make_shared<BaseLib::Variable>(true));
+        //}}}
+
+        //{{{ Pairing methods
+            PVariable pairingMethods = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+            pairingMethods->structValue->emplace("searchDevices", std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct));
+
+            //{{{ setInstallMode
+                PVariable setInstallModeMetadata = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+                PVariable setInstallModeMetadataInfo = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+
+                setInstallModeMetadataInfo->structValue->emplace("interfaceSelector", std::make_shared<BaseLib::Variable>(true));
+
+                PVariable typeSelector = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+
+                PVariable typeSelectorBidcos = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+                typeSelectorBidcos->structValue->emplace("name", std::make_shared<BaseLib::Variable>("HomeMatic BidCoS"));
+                typeSelectorBidcos->structValue->emplace("additionalFields", std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct));
+                typeSelector->structValue->emplace("bidcos", typeSelectorBidcos);
+
+                PVariable typeSelectorIp = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+                typeSelectorIp->structValue->emplace("name", std::make_shared<BaseLib::Variable>("HomeMatic IP"));
+                typeSelectorIp->structValue->emplace("fieldsOptional", std::make_shared<BaseLib::Variable>(true));
+                PVariable typeSelectorIpFields = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+                PVariable typeSelectorIpSgtin = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+                typeSelectorIpSgtin->structValue->emplace("name", std::make_shared<BaseLib::Variable>(std::string("l10n.ccu2.sgtin")));
+                typeSelectorIpSgtin->structValue->emplace("description", std::make_shared<BaseLib::Variable>(std::string("l10n.ccu2.sgtindesc")));
+                typeSelectorIpSgtin->structValue->emplace("pos", std::make_shared<BaseLib::Variable>(0));
+                typeSelectorIpSgtin->structValue->emplace("type", std::make_shared<BaseLib::Variable>(std::string("string")));
+                typeSelectorIpFields->structValue->emplace("sgtin", typeSelectorIpSgtin);
+                PVariable typeSelectorIpKey = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+                typeSelectorIpKey->structValue->emplace("name", std::make_shared<BaseLib::Variable>(std::string("l10n.ccu2.key")));
+                typeSelectorIpKey->structValue->emplace("description", std::make_shared<BaseLib::Variable>(std::string("l10n.ccu2.keydesc")));
+                typeSelectorIpKey->structValue->emplace("pos", std::make_shared<BaseLib::Variable>(1));
+                typeSelectorIpKey->structValue->emplace("type", std::make_shared<BaseLib::Variable>(std::string("string")));
+                typeSelectorIpFields->structValue->emplace("key", typeSelectorIpKey);
+                typeSelectorIp->structValue->emplace("additionalFields", typeSelectorIpFields);
+                typeSelector->structValue->emplace("hmip", typeSelectorIp);
+
+                setInstallModeMetadataInfo->structValue->emplace("typeSelector", typeSelector);
+                setInstallModeMetadata->structValue->emplace("metadataInfo", setInstallModeMetadataInfo);
+
+                pairingMethods->structValue->emplace("setInstallMode", setInstallModeMetadata);
+                info->structValue->emplace("pairingMethods", pairingMethods);
+            //}}}
+        //}}}
+
+        //{{{ interfaces
+            PVariable interfaces = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+
+            PVariable interface = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+            interface->structValue->emplace("name", std::make_shared<BaseLib::Variable>(std::string("CCU2")));
+            interface->structValue->emplace("ipDevice", std::make_shared<BaseLib::Variable>(true));
+
+            PVariable field = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+            field->structValue->emplace("pos", std::make_shared<BaseLib::Variable>(0));
+            field->structValue->emplace("label", std::make_shared<BaseLib::Variable>(std::string("l10n.common.id")));
+            field->structValue->emplace("type", std::make_shared<BaseLib::Variable>(std::string("string")));
+            interface->structValue->emplace("id", field);
+
+            field = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+            field->structValue->emplace("pos", std::make_shared<BaseLib::Variable>(1));
+            field->structValue->emplace("label", std::make_shared<BaseLib::Variable>(std::string("l10n.common.serialNumber")));
+            field->structValue->emplace("type", std::make_shared<BaseLib::Variable>(std::string("string")));
+            interface->structValue->emplace("serialnumber", field);
+
+            field = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+            field->structValue->emplace("pos", std::make_shared<BaseLib::Variable>(2));
+            field->structValue->emplace("label", std::make_shared<BaseLib::Variable>(std::string("l10n.common.hostname")));
+            field->structValue->emplace("type", std::make_shared<BaseLib::Variable>(std::string("string")));
+            interface->structValue->emplace("host", field);
+
+            field = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+            field->structValue->emplace("type", std::make_shared<BaseLib::Variable>(std::string("string")));
+            field->structValue->emplace("const", std::make_shared<BaseLib::Variable>(std::string("2001")));
+            interface->structValue->emplace("port", field);
+
+            field = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+            field->structValue->emplace("type", std::make_shared<BaseLib::Variable>(std::string("string")));
+            field->structValue->emplace("const", std::make_shared<BaseLib::Variable>(std::string("2010")));
+            interface->structValue->emplace("port2", field);
+
+            field = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+            field->structValue->emplace("type", std::make_shared<BaseLib::Variable>(std::string("string")));
+            field->structValue->emplace("const", std::make_shared<BaseLib::Variable>(std::string("2000")));
+            interface->structValue->emplace("port3", field);
+
+            interfaces->structValue->emplace("ccu2", interface);
+
+            info->structValue->emplace("interfaces", interfaces);
+        //}}}
+
+		return info;
 	}
 	catch(const std::exception& ex)
 	{

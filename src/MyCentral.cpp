@@ -1098,6 +1098,15 @@ void MyCentral::searchDevicesThread()
                 pairDevice(Ccu2::RpcType::hmip, interfaceId, serialNumber);
             }
 
+			methodName = "searchDevices";
+			result = interface->invoke(Ccu2::RpcType::wired, methodName, parameters);
+			if(result->errorStruct)
+			{
+				GD::out.printWarning("Warning: Error calling searchDevices for HomeMatic Wired on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
+				continue;
+			}
+
+			methodName = "listDevices";
             result = interface->invoke(Ccu2::RpcType::wired, methodName, parameters);
             if(result->errorStruct)
             {
@@ -1415,7 +1424,7 @@ std::shared_ptr<Variable> MyCentral::setInstallMode(BaseLib::PRpcClientInfo clie
         Ccu2::RpcType rpcType = Ccu2::RpcType::bidcos;
         if(metadata)
         {
-            auto metadataIterator = metadata->structValue->find("ccu");
+            auto metadataIterator = metadata->structValue->find("interface");
             if(metadataIterator != metadata->structValue->end()) ccu = metadataIterator->second->stringValue;
             metadataIterator = metadata->structValue->find("type");
             if(metadataIterator != metadata->structValue->end() && metadataIterator->second->stringValue == "hmip") rpcType = Ccu2::RpcType::hmip;
