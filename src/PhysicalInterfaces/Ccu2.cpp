@@ -52,6 +52,7 @@ Ccu2::Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings
     _hmipNewDevicesCalled = false;
     _wiredNewDevicesCalled = false;
     _isBinaryRpc = false;
+    _stopPingThread = false;
 
     _out.init(GD::bl);
     BaseLib::HelperFunctions::toUpper(settings->id);
@@ -84,6 +85,7 @@ Ccu2::~Ccu2()
 {
     _stopCallbackThread = true;
     _stopped = true;
+    _stopPingThread = true;
     _bl->threadManager.join(_listenThread);
     _bl->threadManager.join(_listenThread2);
     _bl->threadManager.join(_listenThread3);
@@ -329,6 +331,9 @@ void Ccu2::stopListening()
 {
     try
     {
+        _stopPingThread = true;
+        _bl->threadManager.join(_pingThread);
+
         deinit();
 
         _stopped = true;
@@ -575,6 +580,7 @@ void Ccu2::listen(Ccu2::RpcType rpcType)
         {
             //Only start threads once
             _bl->threadManager.start(_initThread, true, &Ccu2::init, this);
+            _stopPingThread = false;
             _bl->threadManager.start(_pingThread, true, &Ccu2::ping, this);
         }
 

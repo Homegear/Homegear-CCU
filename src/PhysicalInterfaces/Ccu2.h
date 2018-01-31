@@ -78,6 +78,7 @@ private:
     std::string _bidcosIdString;
     std::string _hmipIdString;
     std::string _wiredIdString;
+    std::atomic_bool _stopPingThread;
     std::atomic_long _lastPongBidcos;
     std::atomic_long _lastPongHmip;
     std::atomic_long _lastPongWired;
