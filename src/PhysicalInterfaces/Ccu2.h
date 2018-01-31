@@ -113,6 +113,7 @@ private:
     void processPacket(int32_t clientId, bool binaryRpc, std::string& methodName, BaseLib::PArray parameters);
     void listen(RpcType rpcType);
     void init();
+    void deinit();
     void ping();
 };
 

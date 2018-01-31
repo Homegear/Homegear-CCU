@@ -137,6 +137,52 @@ void Ccu2::init()
     }
 }
 
+void Ccu2::deinit()
+{
+    try
+    {
+        BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<BaseLib::Variable>("binary://" + _listenIp + ":" + std::to_string(_listenPort)));
+        parameters->push_back(std::make_shared<BaseLib::Variable>(std::string("")));
+        if(_bidcosClient->connected())
+        {
+            auto result = invoke(RpcType::bidcos, "init", parameters);
+            if(result->errorStruct) _out.printError("Error calling (de-)\"init\" for HomeMatic BidCoS: " + result->structValue->at("faultString")->stringValue);
+        }
+
+        if(_hmipClient && _hmipClient->connected())
+        {
+            parameters->at(0)->stringValue = "http://" + _listenIp + ":" + std::to_string(_listenPort);
+            parameters->at(1)->stringValue = "";
+            auto result = invoke(RpcType::hmip, "init", parameters);
+            if(result->errorStruct) _out.printError("Error calling (de-)\"init\" for HomeMatic IP: " + result->structValue->at("faultString")->stringValue);
+        }
+
+        if(_wiredClient && _wiredClient->connected())
+        {
+            parameters->at(0)->stringValue = "http://" + _listenIp + ":" + std::to_string(_listenPort);
+            parameters->at(1)->stringValue = "";
+            auto result = invoke(RpcType::wired, "init", parameters);
+            if(result->errorStruct) _out.printError("Error calling (de-)\"init\" for HomeMatic IP: " + result->structValue->at("faultString")->stringValue);
+        }
+
+        _out.printInfo("Info: Init complete.");
+    }
+    catch(const std::exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+}
+
 void Ccu2::startListening()
 {
     try
@@ -283,6 +329,8 @@ void Ccu2::stopListening()
 {
     try
     {
+        asdf
+
         _stopped = true;
         _stopCallbackThread = true;
         _bl->threadManager.join(_listenThread);
