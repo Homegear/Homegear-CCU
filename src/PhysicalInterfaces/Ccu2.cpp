@@ -329,7 +329,7 @@ void Ccu2::stopListening()
 {
     try
     {
-        asdf
+        deinit();
 
         _stopped = true;
         _stopCallbackThread = true;
