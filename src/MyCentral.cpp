@@ -131,6 +131,9 @@ void MyCentral::worker()
 		uint32_t counter = 0;
 		uint32_t countsPer10Minutes = BaseLib::HelperFunctions::getRandomNumber(10, 600);
 
+		BaseLib::PVariable metadata = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+		metadata->structValue->emplace("addNewInterfaces", std::make_shared<BaseLib::Variable>(false));
+
 		while(!_stopWorkerThread && !_shuttingDown)
 		{
 			try
@@ -142,7 +145,7 @@ void MyCentral::worker()
 				{
 					countsPer10Minutes = 600;
 					counter = 0;
-					searchInterfaces(nullptr, nullptr);
+					searchInterfaces(nullptr, metadata);
 				}
 				counter++;
 			}
@@ -1171,6 +1174,13 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
 	PFileDescriptor serverSocketDescriptor;
 	try
 	{
+		bool addNewInterfaces = true;
+		if(metadata)
+		{
+			auto metadataIterator = metadata->structValue->find("addNewInterfaces");
+			if(metadataIterator != metadata->structValue->end()) addNewInterfaces = metadataIterator->second->booleanValue;
+		}
+
         //{{{ UDP search
             serverSocketDescriptor = _bl->fileDescriptorManager.add(socket(AF_INET, SOCK_DGRAM, 0));
             if(serverSocketDescriptor->descriptor == -1)
@@ -1311,7 +1321,7 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
                                             settings->port2 = interface->getPort2();
                                             settings->port3 = interface->getPort3();
                                         }
-                                        else
+                                        else if(addNewInterfaces)
                                         {
                                             settings->type = "ccu2-auto";
                                             settings->host = senderIp;
@@ -1321,14 +1331,17 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
                                             settings->port3 = "2000";
                                         }
 
-                                        foundInterfaces.emplace(serial);
+										if(interface || addNewInterfaces)
+										{
+											foundInterfaces.emplace(serial);
 
-                                        std::shared_ptr<Ccu2> newInterface = GD::interfaces->addInterface(settings, true);
-                                        if(newInterface)
-                                        {
-                                            GD::out.printInfo("Info: Found new CCU2 with IP address " + senderIp + " and serial number " + settings->id + ".");
-                                            newInterface->startListening();
-                                        }
+											std::shared_ptr<Ccu2> newInterface = GD::interfaces->addInterface(settings, true);
+											if(newInterface)
+											{
+												GD::out.printInfo("Info: Found new CCU2 with IP address " + senderIp + " and serial number " + settings->id + ".");
+												newInterface->startListening();
+											}
+										}
                                     }
                                 }
                             }
