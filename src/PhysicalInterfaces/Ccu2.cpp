@@ -169,7 +169,7 @@ void Ccu2::deinit()
             if(result->errorStruct) _out.printError("Error calling (de-)\"init\" for HomeMatic IP: " + result->structValue->at("faultString")->stringValue);
         }
 
-        _out.printInfo("Info: Init complete.");
+        _out.printInfo("Info: Deinit complete.");
     }
     catch(const std::exception& ex)
     {
@@ -686,7 +686,7 @@ void Ccu2::ping()
 {
     try
     {
-        while(!_stopped && !_stopCallbackThread)
+        while(!_stopped && !_stopCallbackThread && !_stopPingThread)
         {
             for(int32_t i = 0; i < 30; i++)
             {
