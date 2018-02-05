@@ -147,7 +147,7 @@ void Ccu2::deinit()
         parameters->reserve(2);
         parameters->push_back(std::make_shared<BaseLib::Variable>("binary://" + _listenIp + ":" + std::to_string(_listenPort)));
         parameters->push_back(std::make_shared<BaseLib::Variable>(std::string("")));
-        if(_bidcosClient->connected())
+        if(_bidcosClient && _bidcosClient->connected())
         {
             auto result = invoke(RpcType::bidcos, "init", parameters);
             if(result->errorStruct) _out.printError("Error calling (de-)\"init\" for HomeMatic BidCoS: " + result->structValue->at("faultString")->stringValue);
