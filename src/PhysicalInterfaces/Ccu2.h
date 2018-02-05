@@ -63,7 +63,7 @@ public:
     void startListening();
     void stopListening();
     void sendPacket(std::shared_ptr<BaseLib::Systems::Packet> packet) {};
-    BaseLib::PVariable invoke(RpcType rpcType, std::string methodName, BaseLib::PArray parameters);
+    BaseLib::PVariable invoke(RpcType rpcType, std::string methodName, BaseLib::PArray parameters, bool wait = true);
 
     virtual bool isOpen() { return _bidcosClient && _bidcosClient->connected() && (!_hmipClient || _hmipClient->connected()) && (!_wiredClient || _wiredClient->connected()); }
 private:

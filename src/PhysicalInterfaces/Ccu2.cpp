@@ -149,7 +149,7 @@ void Ccu2::deinit()
         parameters->push_back(std::make_shared<BaseLib::Variable>(std::string("")));
         if(_bidcosClient && _bidcosClient->connected())
         {
-            auto result = invoke(RpcType::bidcos, "init", parameters);
+            auto result = invoke(RpcType::bidcos, "init", parameters, false);
             if(result->errorStruct) _out.printError("Error calling (de-)\"init\" for HomeMatic BidCoS: " + result->structValue->at("faultString")->stringValue);
         }
 
@@ -157,7 +157,7 @@ void Ccu2::deinit()
         {
             parameters->at(0)->stringValue = "http://" + _listenIp + ":" + std::to_string(_listenPort);
             parameters->at(1)->stringValue = "";
-            auto result = invoke(RpcType::hmip, "init", parameters);
+            auto result = invoke(RpcType::hmip, "init", parameters, false);
             if(result->errorStruct) _out.printError("Error calling (de-)\"init\" for HomeMatic IP: " + result->structValue->at("faultString")->stringValue);
         }
 
@@ -165,7 +165,7 @@ void Ccu2::deinit()
         {
             parameters->at(0)->stringValue = "http://" + _listenIp + ":" + std::to_string(_listenPort);
             parameters->at(1)->stringValue = "";
-            auto result = invoke(RpcType::wired, "init", parameters);
+            auto result = invoke(RpcType::wired, "init", parameters, false);
             if(result->errorStruct) _out.printError("Error calling (de-)\"init\" for HomeMatic IP: " + result->structValue->at("faultString")->stringValue);
         }
 
@@ -691,7 +691,7 @@ void Ccu2::ping()
             for(int32_t i = 0; i < 30; i++)
             {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-                if(_stopped || _stopCallbackThread) return;
+                if(_stopped || _stopCallbackThread || _stopPingThread) return;
             }
 
             BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
@@ -774,7 +774,7 @@ void Ccu2::ping()
     }
 }
 
-BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, BaseLib::PArray parameters)
+BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, BaseLib::PArray parameters, bool wait)
 {
     try
     {
@@ -798,6 +798,7 @@ BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, B
             data.insert(data.end(), xmlData.begin(), xmlData.end());
         }
 
+        if(wait)
         {
             std::lock_guard<std::mutex> responseGuard(_responseMutex);
             _response = std::make_shared<BaseLib::Variable>();
@@ -807,21 +808,25 @@ BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, B
         else if(rpcType == RpcType::hmip) _hmipClient->proofwrite(data);
         else if(rpcType == RpcType::wired) _wiredClient->proofwrite(data);
 
-        std::unique_lock<std::mutex> waitLock(_requestWaitMutex);
-        _requestConditionVariable.wait_for(waitLock, std::chrono::milliseconds(60000), [&]
+        if(wait)
         {
+            std::unique_lock<std::mutex> waitLock(_requestWaitMutex);
+            _requestConditionVariable.wait_for(waitLock, std::chrono::milliseconds(60000), [&]
+            {
+                std::lock_guard<std::mutex> responseGuard(_responseMutex);
+                return _response->type != BaseLib::VariableType::tVoid || _stopped;
+            });
+
             std::lock_guard<std::mutex> responseGuard(_responseMutex);
-            return _response->type != BaseLib::VariableType::tVoid || _stopped;
-        });
+            if(_response->type == BaseLib::VariableType::tVoid)
+            {
+                _out.printError("Error: No response received to RPC request. Method: " + methodName);
+                return BaseLib::Variable::createError(-1, "No response received.");
+            }
 
-        std::lock_guard<std::mutex> responseGuard(_responseMutex);
-        if(_response->type == BaseLib::VariableType::tVoid)
-        {
-            _out.printError("Error: No response received to RPC request. Method: " + methodName);
-            return BaseLib::Variable::createError(-1, "No response received.");
+            return _response;
         }
-
-        return _response;
+        else return std::make_shared<BaseLib::Variable>();
     }
     catch(const std::exception& ex)
     {
