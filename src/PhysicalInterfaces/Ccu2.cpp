@@ -105,6 +105,9 @@ void Ccu2::init()
             {
                 if(i % 10 == 0)
                 {
+                    _lastPongBidcos.store(BaseLib::HelperFunctions::getTime());
+                    _lastPongWired.store(BaseLib::HelperFunctions::getTime());
+                    _lastPongHmip.store(BaseLib::HelperFunctions::getTime());
                     if(regaReady()) break;
                     GD::out.printInfo("Info: ReGa is not ready. Waiting for 10 seconds...");
                 }
@@ -722,20 +725,29 @@ void Ccu2::ping()
 
             if(BaseLib::HelperFunctions::getTime() - _lastPongBidcos.load() > 70000)
             {
-                _out.printError("Error: No keep alive response received (BidCoS). Reinitializing...");
-                init();
+                if(regaReady())
+                {
+                    _out.printError("Error: No keep alive response received (BidCoS). Reinitializing...");
+                    init();
+                }
             }
 
             if(_wiredNewDevicesCalled && BaseLib::HelperFunctions::getTime() - _lastPongWired.load() > 3600000)
             {
-                _out.printError("Error: No keep alive received (Wired). Reinitializing...");
-                init();
+                if(regaReady())
+                {
+                    _out.printError("Error: No keep alive received (Wired). Reinitializing...");
+                    init();
+                }
             }
 
             if(_hmipNewDevicesCalled && BaseLib::HelperFunctions::getTime() - _lastPongHmip.load() > 600000)
             {
-                _out.printError("Error: No keep alive received (HM-IP). Reinitializing...");
-                init();
+                if(regaReady())
+                {
+                    _out.printError("Error: No keep alive received (HM-IP). Reinitializing...");
+                    init();
+                }
             }
 
             if(_port2 != 0 && !_hmipClient)

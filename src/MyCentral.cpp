@@ -1366,7 +1366,7 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
         //}}}
 
         if(!foundInterfaces.empty()) GD::interfaces->addEventHandlers((BaseLib::Systems::IPhysicalInterface::IPhysicalInterfaceEventSink*)this);
-        GD::interfaces->removeUnknownInterfaces(foundInterfaces);
+        if(addNewInterfaces) GD::interfaces->removeUnknownInterfaces(foundInterfaces);
 
 		return std::make_shared<Variable>();
 	}
