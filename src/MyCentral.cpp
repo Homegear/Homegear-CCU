@@ -1180,6 +1180,7 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
 			auto metadataIterator = metadata->structValue->find("addNewInterfaces");
 			if(metadataIterator != metadata->structValue->end()) addNewInterfaces = metadataIterator->second->booleanValue;
 		}
+        int32_t newInterfaceCount = 0;
 
         //{{{ UDP search
             serverSocketDescriptor = _bl->fileDescriptorManager.add(socket(AF_INET, SOCK_DGRAM, 0));
@@ -1310,6 +1311,8 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
                                         auto interface = GD::interfaces->getInterfaceBySerial(serial);
                                         if(interface && interface->getHostname() == senderIp) continue;
 
+                                        if(!interface) newInterfaceCount++;
+
                                         Systems::PPhysicalInterfaceSettings settings = std::make_shared<Systems::PhysicalInterfaceSettings>();
                                         settings->id = serial;
                                         if(interface)
@@ -1367,8 +1370,8 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
 
         if(!foundInterfaces.empty()) GD::interfaces->addEventHandlers((BaseLib::Systems::IPhysicalInterface::IPhysicalInterfaceEventSink*)this);
         if(addNewInterfaces) GD::interfaces->removeUnknownInterfaces(foundInterfaces);
-
-		return std::make_shared<Variable>();
+        
+        return std::make_shared<Variable>(newInterfaceCount);
 	}
 	catch(const std::exception& ex)
 	{
