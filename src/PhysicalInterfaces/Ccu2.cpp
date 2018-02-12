@@ -97,6 +97,23 @@ void Ccu2::init()
 {
     try
     {
+        if(!regaReady())
+        {
+            GD::out.printInfo("Info: ReGa is not ready. Waiting for 10 seconds...");
+            int32_t i = 1;
+            while(!_stopped && !_stopCallbackThread)
+            {
+                if(i % 10 == 0)
+                {
+                    if(regaReady()) break;
+                    GD::out.printInfo("Info: ReGa is not ready. Waiting for 10 seconds...");
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+                i++;
+                continue;
+            }
+        }
+
         _hmipNewDevicesCalled = false;
         _wiredNewDevicesCalled = false;
 
@@ -841,6 +858,38 @@ BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, B
         _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return BaseLib::Variable::createError(-32500, "Unknown application error.");
+}
+
+bool Ccu2::regaReady()
+{
+    try
+    {
+        HttpClient client(_bl, _hostname, 80, false);
+        std::string path = "/ise/checkrega.cgi";
+        std::string response;
+        try
+        {
+            client.get(path, response);
+        }
+        catch(BaseLib::HttpClientException& ex)
+        {
+            return false;
+        }
+        if(response == "OK") return true;
+    }
+    catch(const std::exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    return false;
 }
 
 }

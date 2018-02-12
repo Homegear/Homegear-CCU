@@ -116,6 +116,7 @@ private:
     void init();
     void deinit();
     void ping();
+    bool regaReady();
 };
 
 }
