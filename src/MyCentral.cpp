@@ -333,8 +333,19 @@ void MyCentral::pairDevice(Ccu2::RpcType rpcType, std::string& interfaceId, std:
             newPeer = false;
             if(_peersBySerial.find(peer->getSerialNumber()) != _peersBySerial.end()) _peersBySerial.erase(peer->getSerialNumber());
             if(_peersById.find(peer->getID()) != _peersById.end()) _peersById.erase(peer->getID());
+			lockGuard.unlock();
+
+			int32_t i = 0;
+			while(peer.use_count() > 1 && i < 600)
+			{
+				if(_currentPeer && _currentPeer->getID() == peer->getID()) _currentPeer.reset();
+				std::this_thread::sleep_for(std::chrono::milliseconds(100));
+				i++;
+			}
+			if(i == 600) GD::out.printError("Error: Peer deletion took too long.");
         }
-        lockGuard.unlock();
+        else lockGuard.unlock();
+
 
 		auto knownTypeIds = GD::family->getRpcDevices()->getKnownTypeNumbers();
         auto peerInfo = _descriptionCreator.createDescription(rpcType, interfaceId, serialNumber, peer ? peer->getDeviceType() : 0, knownTypeIds);
@@ -449,14 +460,24 @@ void MyCentral::deletePeer(uint64_t id)
 			channels->arrayValue->push_back(PVariable(new Variable(i->first)));
 		}
 
-		raiseRPCDeleteDevices(deviceAddresses, deviceInfo);
-		peer->deleteFromDatabase();
+		{
+			std::lock_guard<std::mutex> peersGuard(_peersMutex);
+			if(_peersBySerial.find(peer->getSerialNumber()) != _peersBySerial.end()) _peersBySerial.erase(peer->getSerialNumber());
+			if(_peersById.find(id) != _peersById.end()) _peersById.erase(id);
+		}
 
-        {
-            std::lock_guard<std::mutex> peersGuard(_peersMutex);
-            if(_peersBySerial.find(peer->getSerialNumber()) != _peersBySerial.end()) _peersBySerial.erase(peer->getSerialNumber());
-            if(_peersById.find(id) != _peersById.end()) _peersById.erase(id);
-        }
+		raiseRPCDeleteDevices(deviceAddresses, deviceInfo);
+
+		int32_t i = 0;
+		while(peer.use_count() > 1 && i < 600)
+		{
+			if(_currentPeer && _currentPeer->getID() == id) _currentPeer.reset();
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+			i++;
+		}
+		if(i == 600) GD::out.printError("Error: Peer deletion took too long.");
+
+		peer->deleteFromDatabase();
 
 		GD::out.printMessage("Removed CCU2 peer " + std::to_string(peer->getID()));
 	}
@@ -1370,7 +1391,7 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
 
         if(!foundInterfaces.empty()) GD::interfaces->addEventHandlers((BaseLib::Systems::IPhysicalInterface::IPhysicalInterfaceEventSink*)this);
         if(addNewInterfaces) GD::interfaces->removeUnknownInterfaces(foundInterfaces);
-        
+
         return std::make_shared<Variable>(newInterfaceCount);
 	}
 	catch(const std::exception& ex)
