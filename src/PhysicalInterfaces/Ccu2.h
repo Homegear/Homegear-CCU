@@ -63,7 +63,7 @@ public:
     void startListening();
     void stopListening();
     void sendPacket(std::shared_ptr<BaseLib::Systems::Packet> packet) {};
-    BaseLib::PVariable invoke(RpcType rpcType, std::string methodName, BaseLib::PArray parameters);
+    BaseLib::PVariable invoke(RpcType rpcType, std::string methodName, BaseLib::PArray parameters, bool wait = true);
 
     virtual bool isOpen() { return _bidcosClient && _bidcosClient->connected() && (!_hmipClient || _hmipClient->connected()) && (!_wiredClient || _wiredClient->connected()); }
 private:
@@ -78,6 +78,7 @@ private:
     std::string _bidcosIdString;
     std::string _hmipIdString;
     std::string _wiredIdString;
+    std::atomic_bool _stopPingThread;
     std::atomic_long _lastPongBidcos;
     std::atomic_long _lastPongHmip;
     std::atomic_long _lastPongWired;
@@ -113,7 +114,9 @@ private:
     void processPacket(int32_t clientId, bool binaryRpc, std::string& methodName, BaseLib::PArray parameters);
     void listen(RpcType rpcType);
     void init();
+    void deinit();
     void ping();
+    bool regaReady();
 };
 
 }

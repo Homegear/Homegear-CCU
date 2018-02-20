@@ -52,6 +52,7 @@ Ccu2::Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings
     _hmipNewDevicesCalled = false;
     _wiredNewDevicesCalled = false;
     _isBinaryRpc = false;
+    _stopPingThread = false;
 
     _out.init(GD::bl);
     BaseLib::HelperFunctions::toUpper(settings->id);
@@ -84,6 +85,7 @@ Ccu2::~Ccu2()
 {
     _stopCallbackThread = true;
     _stopped = true;
+    _stopPingThread = true;
     _bl->threadManager.join(_listenThread);
     _bl->threadManager.join(_listenThread2);
     _bl->threadManager.join(_listenThread3);
@@ -95,6 +97,26 @@ void Ccu2::init()
 {
     try
     {
+        if(!regaReady())
+        {
+            GD::out.printInfo("Info: ReGa is not ready. Waiting for 10 seconds...");
+            int32_t i = 1;
+            while(!_stopped && !_stopCallbackThread)
+            {
+                if(i % 10 == 0)
+                {
+                    _lastPongBidcos.store(BaseLib::HelperFunctions::getTime());
+                    _lastPongWired.store(BaseLib::HelperFunctions::getTime());
+                    _lastPongHmip.store(BaseLib::HelperFunctions::getTime());
+                    if(regaReady()) break;
+                    GD::out.printInfo("Info: ReGa is not ready. Waiting for 10 seconds...");
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+                i++;
+                continue;
+            }
+        }
+
         _hmipNewDevicesCalled = false;
         _wiredNewDevicesCalled = false;
 
@@ -122,6 +144,52 @@ void Ccu2::init()
         }
 
         _out.printInfo("Info: Init complete.");
+    }
+    catch(const std::exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+}
+
+void Ccu2::deinit()
+{
+    try
+    {
+        BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<BaseLib::Variable>("binary://" + _listenIp + ":" + std::to_string(_listenPort)));
+        parameters->push_back(std::make_shared<BaseLib::Variable>(std::string("")));
+        if(_bidcosClient && _bidcosClient->connected())
+        {
+            auto result = invoke(RpcType::bidcos, "init", parameters, false);
+            if(result->errorStruct) _out.printError("Error calling (de-)\"init\" for HomeMatic BidCoS: " + result->structValue->at("faultString")->stringValue);
+        }
+
+        if(_hmipClient && _hmipClient->connected())
+        {
+            parameters->at(0)->stringValue = "http://" + _listenIp + ":" + std::to_string(_listenPort);
+            parameters->at(1)->stringValue = "";
+            auto result = invoke(RpcType::hmip, "init", parameters, false);
+            if(result->errorStruct) _out.printError("Error calling (de-)\"init\" for HomeMatic IP: " + result->structValue->at("faultString")->stringValue);
+        }
+
+        if(_wiredClient && _wiredClient->connected())
+        {
+            parameters->at(0)->stringValue = "http://" + _listenIp + ":" + std::to_string(_listenPort);
+            parameters->at(1)->stringValue = "";
+            auto result = invoke(RpcType::wired, "init", parameters, false);
+            if(result->errorStruct) _out.printError("Error calling (de-)\"init\" for HomeMatic IP: " + result->structValue->at("faultString")->stringValue);
+        }
+
+        _out.printInfo("Info: Deinit complete.");
     }
     catch(const std::exception& ex)
     {
@@ -283,6 +351,11 @@ void Ccu2::stopListening()
 {
     try
     {
+        _stopPingThread = true;
+        _bl->threadManager.join(_pingThread);
+
+        deinit();
+
         _stopped = true;
         _stopCallbackThread = true;
         _bl->threadManager.join(_listenThread);
@@ -527,6 +600,7 @@ void Ccu2::listen(Ccu2::RpcType rpcType)
         {
             //Only start threads once
             _bl->threadManager.start(_initThread, true, &Ccu2::init, this);
+            _stopPingThread = false;
             _bl->threadManager.start(_pingThread, true, &Ccu2::ping, this);
         }
 
@@ -632,12 +706,12 @@ void Ccu2::ping()
 {
     try
     {
-        while(!_stopped && !_stopCallbackThread)
+        while(!_stopped && !_stopCallbackThread && !_stopPingThread)
         {
             for(int32_t i = 0; i < 30; i++)
             {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-                if(_stopped || _stopCallbackThread) return;
+                if(_stopped || _stopCallbackThread || _stopPingThread) return;
             }
 
             BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
@@ -651,20 +725,29 @@ void Ccu2::ping()
 
             if(BaseLib::HelperFunctions::getTime() - _lastPongBidcos.load() > 70000)
             {
-                _out.printError("Error: No keep alive response received (BidCoS). Reinitializing...");
-                init();
+                if(regaReady())
+                {
+                    _out.printError("Error: No keep alive response received (BidCoS). Reinitializing...");
+                    init();
+                }
             }
 
             if(_wiredNewDevicesCalled && BaseLib::HelperFunctions::getTime() - _lastPongWired.load() > 3600000)
             {
-                _out.printError("Error: No keep alive received (Wired). Reinitializing...");
-                init();
+                if(regaReady())
+                {
+                    _out.printError("Error: No keep alive received (Wired). Reinitializing...");
+                    init();
+                }
             }
 
             if(_hmipNewDevicesCalled && BaseLib::HelperFunctions::getTime() - _lastPongHmip.load() > 600000)
             {
-                _out.printError("Error: No keep alive received (HM-IP). Reinitializing...");
-                init();
+                if(regaReady())
+                {
+                    _out.printError("Error: No keep alive received (HM-IP). Reinitializing...");
+                    init();
+                }
             }
 
             if(_port2 != 0 && !_hmipClient)
@@ -720,7 +803,7 @@ void Ccu2::ping()
     }
 }
 
-BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, BaseLib::PArray parameters)
+BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, BaseLib::PArray parameters, bool wait)
 {
     try
     {
@@ -744,6 +827,7 @@ BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, B
             data.insert(data.end(), xmlData.begin(), xmlData.end());
         }
 
+        if(wait)
         {
             std::lock_guard<std::mutex> responseGuard(_responseMutex);
             _response = std::make_shared<BaseLib::Variable>();
@@ -753,21 +837,25 @@ BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, B
         else if(rpcType == RpcType::hmip) _hmipClient->proofwrite(data);
         else if(rpcType == RpcType::wired) _wiredClient->proofwrite(data);
 
-        std::unique_lock<std::mutex> waitLock(_requestWaitMutex);
-        _requestConditionVariable.wait_for(waitLock, std::chrono::milliseconds(60000), [&]
+        if(wait)
         {
+            std::unique_lock<std::mutex> waitLock(_requestWaitMutex);
+            _requestConditionVariable.wait_for(waitLock, std::chrono::milliseconds(60000), [&]
+            {
+                std::lock_guard<std::mutex> responseGuard(_responseMutex);
+                return _response->type != BaseLib::VariableType::tVoid || _stopped;
+            });
+
             std::lock_guard<std::mutex> responseGuard(_responseMutex);
-            return _response->type != BaseLib::VariableType::tVoid || _stopped;
-        });
+            if(_response->type == BaseLib::VariableType::tVoid)
+            {
+                _out.printError("Error: No response received to RPC request. Method: " + methodName);
+                return BaseLib::Variable::createError(-1, "No response received.");
+            }
 
-        std::lock_guard<std::mutex> responseGuard(_responseMutex);
-        if(_response->type == BaseLib::VariableType::tVoid)
-        {
-            _out.printError("Error: No response received to RPC request. Method: " + methodName);
-            return BaseLib::Variable::createError(-1, "No response received.");
+            return _response;
         }
-
-        return _response;
+        else return std::make_shared<BaseLib::Variable>();
     }
     catch(const std::exception& ex)
     {
@@ -782,6 +870,38 @@ BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, B
         _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return BaseLib::Variable::createError(-32500, "Unknown application error.");
+}
+
+bool Ccu2::regaReady()
+{
+    try
+    {
+        HttpClient client(_bl, _hostname, 80, false);
+        std::string path = "/ise/checkrega.cgi";
+        std::string response;
+        try
+        {
+            client.get(path, response);
+        }
+        catch(BaseLib::HttpClientException& ex)
+        {
+            return false;
+        }
+        if(response == "OK") return true;
+    }
+    catch(const std::exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    return false;
 }
 
 }

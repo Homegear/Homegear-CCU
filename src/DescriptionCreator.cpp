@@ -17,8 +17,12 @@ DescriptionCreator::PeerInfo DescriptionCreator::createDescription(Ccu2::RpcType
     {
         createDirectories();
 
-        uint32_t typeId = oldTypeNumber;
-        while(typeId == 0 || knownTypeNumbers.find(typeId) != knownTypeNumbers.end()) typeId++;
+        uint32_t typeId = 0;
+        if(oldTypeNumber) typeId = oldTypeNumber;
+        else
+        {
+            while(typeId == 0 || knownTypeNumbers.find(typeId) != knownTypeNumbers.end()) typeId++;
+        }
 
         auto interface = GD::interfaces->getInterface(interfaceId);
         if(!interface) return PeerInfo();

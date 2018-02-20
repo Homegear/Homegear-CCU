@@ -131,6 +131,9 @@ void MyCentral::worker()
 		uint32_t counter = 0;
 		uint32_t countsPer10Minutes = BaseLib::HelperFunctions::getRandomNumber(10, 600);
 
+		BaseLib::PVariable metadata = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+		metadata->structValue->emplace("addNewInterfaces", std::make_shared<BaseLib::Variable>(false));
+
 		while(!_stopWorkerThread && !_shuttingDown)
 		{
 			try
@@ -142,7 +145,7 @@ void MyCentral::worker()
 				{
 					countsPer10Minutes = 600;
 					counter = 0;
-					searchInterfaces(nullptr, nullptr);
+					searchInterfaces(nullptr, metadata);
 				}
 				counter++;
 			}
@@ -330,8 +333,19 @@ void MyCentral::pairDevice(Ccu2::RpcType rpcType, std::string& interfaceId, std:
             newPeer = false;
             if(_peersBySerial.find(peer->getSerialNumber()) != _peersBySerial.end()) _peersBySerial.erase(peer->getSerialNumber());
             if(_peersById.find(peer->getID()) != _peersById.end()) _peersById.erase(peer->getID());
+			lockGuard.unlock();
+
+			int32_t i = 0;
+			while(peer.use_count() > 1 && i < 600)
+			{
+				if(_currentPeer && _currentPeer->getID() == peer->getID()) _currentPeer.reset();
+				std::this_thread::sleep_for(std::chrono::milliseconds(100));
+				i++;
+			}
+			if(i == 600) GD::out.printError("Error: Peer deletion took too long.");
         }
-        lockGuard.unlock();
+        else lockGuard.unlock();
+
 
 		auto knownTypeIds = GD::family->getRpcDevices()->getKnownTypeNumbers();
         auto peerInfo = _descriptionCreator.createDescription(rpcType, interfaceId, serialNumber, peer ? peer->getDeviceType() : 0, knownTypeIds);
@@ -446,14 +460,24 @@ void MyCentral::deletePeer(uint64_t id)
 			channels->arrayValue->push_back(PVariable(new Variable(i->first)));
 		}
 
-		raiseRPCDeleteDevices(deviceAddresses, deviceInfo);
-		peer->deleteFromDatabase();
+		{
+			std::lock_guard<std::mutex> peersGuard(_peersMutex);
+			if(_peersBySerial.find(peer->getSerialNumber()) != _peersBySerial.end()) _peersBySerial.erase(peer->getSerialNumber());
+			if(_peersById.find(id) != _peersById.end()) _peersById.erase(id);
+		}
 
-        {
-            std::lock_guard<std::mutex> peersGuard(_peersMutex);
-            if(_peersBySerial.find(peer->getSerialNumber()) != _peersBySerial.end()) _peersBySerial.erase(peer->getSerialNumber());
-            if(_peersById.find(id) != _peersById.end()) _peersById.erase(id);
-        }
+		raiseRPCDeleteDevices(deviceAddresses, deviceInfo);
+
+		int32_t i = 0;
+		while(peer.use_count() > 1 && i < 600)
+		{
+			if(_currentPeer && _currentPeer->getID() == id) _currentPeer.reset();
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+			i++;
+		}
+		if(i == 600) GD::out.printError("Error: Peer deletion took too long.");
+
+		peer->deleteFromDatabase();
 
 		GD::out.printMessage("Removed CCU2 peer " + std::to_string(peer->getID()));
 	}
@@ -1171,6 +1195,14 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
 	PFileDescriptor serverSocketDescriptor;
 	try
 	{
+		bool addNewInterfaces = true;
+		if(metadata)
+		{
+			auto metadataIterator = metadata->structValue->find("addNewInterfaces");
+			if(metadataIterator != metadata->structValue->end()) addNewInterfaces = metadataIterator->second->booleanValue;
+		}
+        int32_t newInterfaceCount = 0;
+
         //{{{ UDP search
             serverSocketDescriptor = _bl->fileDescriptorManager.add(socket(AF_INET, SOCK_DGRAM, 0));
             if(serverSocketDescriptor->descriptor == -1)
@@ -1300,6 +1332,8 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
                                         auto interface = GD::interfaces->getInterfaceBySerial(serial);
                                         if(interface && interface->getHostname() == senderIp) continue;
 
+                                        if(!interface) newInterfaceCount++;
+
                                         Systems::PPhysicalInterfaceSettings settings = std::make_shared<Systems::PhysicalInterfaceSettings>();
                                         settings->id = serial;
                                         if(interface)
@@ -1311,7 +1345,7 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
                                             settings->port2 = interface->getPort2();
                                             settings->port3 = interface->getPort3();
                                         }
-                                        else
+                                        else if(addNewInterfaces)
                                         {
                                             settings->type = "ccu2-auto";
                                             settings->host = senderIp;
@@ -1321,14 +1355,17 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
                                             settings->port3 = "2000";
                                         }
 
-                                        foundInterfaces.emplace(serial);
+										if(interface || addNewInterfaces)
+										{
+											foundInterfaces.emplace(serial);
 
-                                        std::shared_ptr<Ccu2> newInterface = GD::interfaces->addInterface(settings, true);
-                                        if(newInterface)
-                                        {
-                                            GD::out.printInfo("Info: Found new CCU2 with IP address " + senderIp + " and serial number " + settings->id + ".");
-                                            newInterface->startListening();
-                                        }
+											std::shared_ptr<Ccu2> newInterface = GD::interfaces->addInterface(settings, true);
+											if(newInterface)
+											{
+												GD::out.printInfo("Info: Found new CCU2 with IP address " + senderIp + " and serial number " + settings->id + ".");
+												newInterface->startListening();
+											}
+										}
                                     }
                                 }
                             }
@@ -1353,9 +1390,9 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
         //}}}
 
         if(!foundInterfaces.empty()) GD::interfaces->addEventHandlers((BaseLib::Systems::IPhysicalInterface::IPhysicalInterfaceEventSink*)this);
-        GD::interfaces->removeUnknownInterfaces(foundInterfaces);
+        if(addNewInterfaces) GD::interfaces->removeUnknownInterfaces(foundInterfaces);
 
-		return std::make_shared<Variable>();
+        return std::make_shared<Variable>(newInterfaceCount);
 	}
 	catch(const std::exception& ex)
 	{
