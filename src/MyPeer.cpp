@@ -579,7 +579,7 @@ PVariable MyPeer::getValueFromDevice(PParameter& parameter, int32_t channel, boo
             parameterIterator->second.setBinaryData(parameterData);
             if(parameterIterator->second.databaseId > 0) saveParameter(parameterIterator->second.databaseId, parameterData);
             else saveParameter(0, ParameterGroup::Type::Enum::variables, channel, parameter->id, parameterData);
-            
+
             return result;
 		}
 	}
