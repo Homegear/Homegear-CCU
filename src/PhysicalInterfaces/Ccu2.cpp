@@ -49,6 +49,7 @@ Ccu2::Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings
     _binaryRpc.reset(new BaseLib::Rpc::BinaryRpc(GD::bl));
     _http.reset(new BaseLib::Http());
 
+    _bidcosDevicesExist = false;
     _hmipNewDevicesCalled = false;
     _wiredNewDevicesCalled = false;
     _isBinaryRpc = false;
@@ -117,6 +118,7 @@ void Ccu2::init()
             }
         }
 
+        _bidcosDevicesExist = false;
         _hmipNewDevicesCalled = false;
         _wiredNewDevicesCalled = false;
 
@@ -274,14 +276,18 @@ void Ccu2::startListening()
 
             _out.printInfo("Info: Connecting to IP " + _hostname + " and ports " + std::to_string(_port) + ", " + std::to_string(_port3) + (_port2 != 0 ? ", " + std::to_string(_port2) : "") + ".");
 
-            try
+            if(_port != 0)
             {
-                _bidcosClient = std::unique_ptr<BaseLib::TcpSocket>(new BaseLib::TcpSocket(_bl, _hostname, std::to_string(_port)));
-                _bidcosClient->open();
-            }
-            catch(BaseLib::Exception& ex)
-            {
-                _out.printError("Could not connect to HomeMatic BidCoS port.");
+                try
+                {
+                    _bidcosClient = std::unique_ptr<BaseLib::TcpSocket>(new BaseLib::TcpSocket(_bl, _hostname, std::to_string(_port)));
+                    _bidcosClient->open();
+                }
+                catch(BaseLib::Exception& ex)
+                {
+                    _out.printError("Could not connect to HomeMatic BidCoS port.");
+                    _bidcosClient.reset();
+                }
             }
             if(_port2 != 0)
             {
@@ -309,24 +315,34 @@ void Ccu2::startListening()
                     _wiredClient.reset();
                 }
             }
-            _ipAddress = _bidcosClient->getIpAddress();
+            _ipAddress = "";
+            if(_bidcosClient) _ipAddress = _bidcosClient->getIpAddress();
+            else if(_hmipClient) _ipAddress = _hmipClient->getIpAddress();
+            else if(_wiredClient) _ipAddress = _wiredClient->getIpAddress();
             _noHost = _hostname.empty();
 
             _bidcosIdString = "Homegear_BidCoS_" + _listenIp + "_" + std::to_string(_listenPort);
             _hmipIdString = "Homegear_HMIP_" + _listenIp + "_" + std::to_string(_listenPort);
             _wiredIdString = "Homegear_Wired_" + _listenIp + "_" + std::to_string(_listenPort);
 
-            if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::bidcos);
-            else _bl->threadManager.start(_listenThread, true, &Ccu2::listen, this, RpcType::bidcos);
+            if(_bidcosClient && _port != 0)
+            {
+                if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::bidcos);
+                else _bl->threadManager.start(_listenThread, true, &Ccu2::listen, this, RpcType::bidcos);
+            }
 
             if(_hmipClient && _port2 != 0)
             {
+                if(!_bidcosClient) _connectedRpcType = RpcType::hmip;
+
                 if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread2, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::hmip);
                 else _bl->threadManager.start(_listenThread2, true, &Ccu2::listen, this, RpcType::hmip);
             }
 
             if(_wiredClient && _port3 != 0)
             {
+                if(!_bidcosClient && _connectedRpcType == RpcType::bidcos) _connectedRpcType = RpcType::wired;
+
                 if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread3, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::wired);
                 else _bl->threadManager.start(_listenThread3, true, &Ccu2::listen, this, RpcType::wired);
             }
@@ -524,7 +540,11 @@ void Ccu2::processPacket(int32_t clientId, bool binaryRpc, std::string& methodNa
         {
             if(!binaryRpc) _hmipNewDevicesCalled = true;
             if(!binaryRpc) parameters->at(0)->integerValue = (int32_t)RpcType::hmip;
-            else if(parameters->at(0)->stringValue == _bidcosIdString) parameters->at(0)->integerValue = (int32_t) RpcType::bidcos;
+            else if(parameters->at(0)->stringValue == _bidcosIdString)
+            {
+                parameters->at(0)->integerValue = (int32_t) RpcType::bidcos;
+                _bidcosDevicesExist = parameters->at(1)->arrayValue->size() > 52;
+            }
             else if(parameters->at(0)->stringValue == _wiredIdString)
             {
                 parameters->at(0)->integerValue = (int32_t)RpcType::wired;
@@ -596,7 +616,7 @@ void Ccu2::listen(Ccu2::RpcType rpcType)
         BaseLib::Rpc::BinaryRpc binaryRpc(GD::bl);
         BaseLib::Http http;
 
-        if(rpcType == RpcType::bidcos)
+        if(rpcType == _connectedRpcType)
         {
             //Only start threads once
             _bl->threadManager.start(_initThread, true, &Ccu2::init, this);
@@ -714,16 +734,19 @@ void Ccu2::ping()
                 if(_stopped || _stopCallbackThread || _stopPingThread) return;
             }
 
-            BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
-            parameters->push_back(std::make_shared<BaseLib::Variable>(_bidcosIdString));
-            auto result = invoke(RpcType::bidcos, "ping", parameters);
-            if(result->errorStruct)
+            if(_bidcosDevicesExist)
             {
-                _out.printError("Error calling \"ping\" (BidCoS): " + result->structValue->at("faultString")->stringValue);
-                continue;
+                BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
+                parameters->push_back(std::make_shared<BaseLib::Variable>(_bidcosIdString));
+                auto result = invoke(RpcType::bidcos, "ping", parameters);
+                if(result->errorStruct)
+                {
+                    _out.printError("Error calling \"ping\" (BidCoS): " + result->structValue->at("faultString")->stringValue);
+                    continue;
+                }
             }
 
-            if(BaseLib::HelperFunctions::getTime() - _lastPongBidcos.load() > 70000)
+            if(_bidcosDevicesExist && BaseLib::HelperFunctions::getTime() - _lastPongBidcos.load() > 70000)
             {
                 if(regaReady())
                 {
@@ -747,6 +770,25 @@ void Ccu2::ping()
                 {
                     _out.printError("Error: No keep alive received (HM-IP). Reinitializing...");
                     init();
+                }
+            }
+
+            if(_port != 0 && !_bidcosClient)
+            {
+                try
+                {
+                    _bidcosClient = std::unique_ptr<BaseLib::TcpSocket>(new BaseLib::TcpSocket(_bl, _hostname, std::to_string(_port2)));
+                    _bidcosClient->open();
+                }
+                catch(BaseLib::Exception& ex)
+                {
+                    _bidcosClient.reset();
+                }
+
+                if(_bidcosClient)
+                {
+                    if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread2, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::bidcos);
+                    else _bl->threadManager.start(_listenThread2, true, &Ccu2::listen, this, RpcType::bidcos);
                 }
             }
 
