@@ -764,7 +764,7 @@ void Ccu2::ping()
                 }
             }
 
-            if(_hmipNewDevicesCalled && BaseLib::HelperFunctions::getTime() - _lastPongHmip.load() > 600000)
+            if(_hmipNewDevicesCalled && BaseLib::HelperFunctions::getTime() - _lastPongHmip.load() > 3600000)
             {
                 if(regaReady())
                 {
