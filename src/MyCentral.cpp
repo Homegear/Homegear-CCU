@@ -391,7 +391,8 @@ void MyCentral::pairDevice(Ccu2::RpcType rpcType, std::string& interfaceId, std:
             {
                 deviceDescriptions->arrayValue->push_back(*j);
             }
-            raiseRPCNewDevices(deviceDescriptions);
+            std::vector<uint64_t> newIds{ peer->getID() };
+            raiseRPCNewDevices(newIds, deviceDescriptions);
         }
         else
         {
@@ -466,7 +467,8 @@ void MyCentral::deletePeer(uint64_t id)
 			if(_peersById.find(id) != _peersById.end()) _peersById.erase(id);
 		}
 
-		raiseRPCDeleteDevices(deviceAddresses, deviceInfo);
+        std::vector<uint64_t> deletedIds{ id };
+		raiseRPCDeleteDevices(deletedIds, deviceAddresses, deviceInfo);
 
 		int32_t i = 0;
 		while(peer.use_count() > 1 && i < 600)
