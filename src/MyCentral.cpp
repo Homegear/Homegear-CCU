@@ -944,7 +944,7 @@ PVariable MyCentral::deleteDevice(BaseLib::PRpcClientInfo clientInfo, uint64_t p
 
         std::string interfaceId = peer->getPhysicalInterfaceId();
         auto interface = GD::interfaces->getInterface(interfaceId);
-        if(interface)
+        if(interface && !(flags & 8))
         {
             PArray parameters = std::make_shared<Array>();
             parameters->reserve(2);
