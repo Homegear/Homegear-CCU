@@ -90,9 +90,11 @@ private:
     std::unique_ptr<BaseLib::Rpc::RpcDecoder> _rpcDecoder;
     RpcType _connectedRpcType = RpcType::bidcos;
     std::atomic_bool _bidcosDevicesExist;
+    std::atomic_bool _bidcosReInit;
     std::atomic_bool _hmipNewDevicesCalled;
+    std::atomic_bool _hmipReInit;
     std::atomic_bool _wiredNewDevicesCalled;
-    std::atomic_bool _isBinaryRpc;
+    std::atomic_bool _wiredReInit;
     std::unique_ptr<BaseLib::Rpc::BinaryRpc> _binaryRpc;
     std::unique_ptr<BaseLib::Http> _http;
     std::unique_ptr<BaseLib::Rpc::XmlrpcEncoder> _xmlrpcEncoder;
