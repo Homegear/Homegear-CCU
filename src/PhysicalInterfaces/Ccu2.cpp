@@ -46,8 +46,6 @@ Ccu2::Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings
     _rpcEncoder.reset(new BaseLib::Rpc::RpcEncoder(GD::bl, false, false));
     _xmlrpcDecoder.reset(new BaseLib::Rpc::XmlrpcDecoder(GD::bl));
     _xmlrpcEncoder.reset(new BaseLib::Rpc::XmlrpcEncoder(GD::bl));
-    _binaryRpc.reset(new BaseLib::Rpc::BinaryRpc(GD::bl));
-    _http.reset(new BaseLib::Http());
 
     _bidcosDevicesExist = false;
     _hmipNewDevicesCalled = false;
@@ -308,6 +306,7 @@ void Ccu2::startListening()
 
             BaseLib::TcpSocket::TcpServerInfo serverInfo;
             serverInfo.newConnectionCallback = std::bind(&Ccu2::newConnection, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+            serverInfo.connectionClosedCallback = std::bind(&Ccu2::connectionClosed, this, std::placeholders::_1);
             serverInfo.packetReceivedCallback = std::bind(&Ccu2::packetReceived, this, std::placeholders::_1, std::placeholders::_2);
 
             std::string settingName = "eventServerPortRange";
@@ -488,7 +487,36 @@ void Ccu2::newConnection(int32_t clientId, std::string address, uint16_t port)
 {
     try
     {
-        if(GD::bl->debugLevel >= 5) _out.printDebug("Debug: New connection from " + address + " on port " + std::to_string(port));
+        if(GD::bl->debugLevel >= 5) _out.printDebug("Debug: New connection from " + address + " on port " + std::to_string(port) + ". Client ID is: " + std::to_string(clientId));
+        CcuClientInfo clientInfo;
+        clientInfo.binaryRpc = std::make_shared<BaseLib::Rpc::BinaryRpc>(_bl);
+        clientInfo.http = std::make_shared<BaseLib::Http>();
+
+        std::lock_guard<std::mutex> ccuClientInfoGuard(_ccuClientInfoMutex);
+        _ccuClientInfo[clientId] = std::move(clientInfo);
+    }
+    catch(const std::exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+}
+
+void Ccu2::connectionClosed(int32_t clientId)
+{
+    try
+    {
+        if(GD::bl->debugLevel >= 5) _out.printDebug("Debug: Connection to client " + std::to_string(clientId) + " closed.");
+
+        std::lock_guard<std::mutex> ccuClientInfoGuard(_ccuClientInfoMutex);
+        _ccuClientInfo.erase(clientId);
     }
     catch(const std::exception& ex)
     {
@@ -510,17 +538,31 @@ void Ccu2::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet
     {
         if(GD::bl->debugLevel >= 5) _out.printDebug("Debug: Raw packet " + BaseLib::HelperFunctions::getHexString(packet));
 
+        std::shared_ptr<BaseLib::Rpc::BinaryRpc> binaryRpc;
+        std::shared_ptr<BaseLib::Http> http;
+
+        {
+            std::lock_guard<std::mutex> ccuClientInfoGuard(_ccuClientInfoMutex);
+            auto clientIterator = _ccuClientInfo.find(clientId);
+            if(clientIterator == _ccuClientInfo.end())
+            {
+                _out.printError("Error: Client with ID " + std::to_string(clientId) + " not found in map.");
+                return;
+            }
+            binaryRpc = clientIterator->second.binaryRpc;
+            http = clientIterator->second.http;
+        }
+
         if(packet.empty()) return;
         bool isBinaryRpc = false;
         uint32_t processedBytes = 0;
         try
         {
-            processedBytes = 0;
             while(processedBytes < packet.size())
             {
-                if(!isBinaryRpc && !_binaryRpc->processingStarted() && !_http->headerProcessingStarted())
+                if(!isBinaryRpc && !binaryRpc->processingStarted() && !http->headerProcessingStarted())
                 {
-                    isBinaryRpc = packet.size() < 3 ? packet.at(0) == 'B' : !strncmp((char*)packet.data(), "Bin", 3);
+                    isBinaryRpc = packet.size() - processedBytes < 3 ? (char)(*(packet.data() + processedBytes)) == 'B' : !strncmp((char*)(packet.data() + processedBytes), "Bin", 3);
                 }
 
                 std::string methodName;
@@ -528,39 +570,38 @@ void Ccu2::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet
 
                 if(isBinaryRpc)
                 {
-                    processedBytes += _binaryRpc->process((char*)packet.data() + processedBytes, packet.size() - processedBytes);
-                    if(_binaryRpc->isFinished())
+                    processedBytes += binaryRpc->process((char*)packet.data() + processedBytes, packet.size() - processedBytes);
+                    if(binaryRpc->isFinished())
                     {
-                        if(_binaryRpc->getType() == BaseLib::Rpc::BinaryRpc::Type::request)
+                        if(binaryRpc->getType() == BaseLib::Rpc::BinaryRpc::Type::request)
                         {
-                            parameters = _rpcDecoder->decodeRequest(_binaryRpc->getData(), methodName);
+                            parameters = _rpcDecoder->decodeRequest(binaryRpc->getData(), methodName);
                             processPacket(clientId, true, methodName, parameters);
                         }
-                        _binaryRpc->reset();
+                        isBinaryRpc = false;
+                        binaryRpc->reset();
                     }
                 }
                 else
                 {
-                    processedBytes += _http->process((char*)packet.data() + processedBytes, packet.size() - processedBytes);
-                    if(_http->isFinished())
+                    processedBytes += http->process((char*)packet.data() + processedBytes, packet.size() - processedBytes);
+                    if(http->isFinished())
                     {
-                        if(_http->getHeader().method == "POST")
+                        if(http->getHeader().method == "POST")
                         {
-                            parameters = _xmlrpcDecoder->decodeRequest(_http->getContent(), methodName);
+                            parameters = _xmlrpcDecoder->decodeRequest(http->getContent(), methodName);
                             processPacket(clientId, false, methodName, parameters);
                         }
-                        _http->reset();
+                        http->reset();
                     }
                 }
-
-
             }
         }
         catch(BaseLib::Rpc::BinaryRpcException& ex)
         {
             _out.printError("Error processing packet (1): " + ex.what());
-            _binaryRpc->reset();
-            _http->reset();
+            binaryRpc->reset();
+            http->reset();
         }
     }
     catch(const std::exception& ex)

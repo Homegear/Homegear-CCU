@@ -67,6 +67,12 @@ public:
 
     virtual bool isOpen() { return _bidcosClient && _bidcosClient->connected() && (!_hmipClient || _hmipClient->connected()) && (!_wiredClient || _wiredClient->connected()); }
 private:
+    struct CcuClientInfo
+    {
+        std::shared_ptr<BaseLib::Rpc::BinaryRpc> binaryRpc;
+        std::shared_ptr<BaseLib::Http> http;
+    };
+
     BaseLib::Output _out;
     bool _noHost = true;
     std::atomic_bool _stopped;
@@ -95,8 +101,8 @@ private:
     std::atomic_bool _hmipReInit;
     std::atomic_bool _wiredNewDevicesCalled;
     std::atomic_bool _wiredReInit;
-    std::unique_ptr<BaseLib::Rpc::BinaryRpc> _binaryRpc;
-    std::unique_ptr<BaseLib::Http> _http;
+    std::mutex _ccuClientInfoMutex;
+    std::map<int32_t, CcuClientInfo> _ccuClientInfo;
     std::unique_ptr<BaseLib::Rpc::XmlrpcEncoder> _xmlrpcEncoder;
     std::unique_ptr<BaseLib::Rpc::XmlrpcDecoder> _xmlrpcDecoder;
 
@@ -114,6 +120,7 @@ private:
     BaseLib::PVariable _response;
 
     void newConnection(int32_t clientId, std::string address, uint16_t port);
+    void connectionClosed(int32_t clientId);
     void packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet);
     void processPacket(int32_t clientId, bool binaryRpc, std::string& methodName, BaseLib::PArray parameters);
     void listen(RpcType rpcType);
