@@ -101,18 +101,21 @@ void Ccu2::reconnect(RpcType rpcType, bool forceReinit)
     {
         if(rpcType == RpcType::bidcos)
         {
+            _out.printWarning("Warning: Reconnecting HomeMatic BidCoS...");
             _bidcosClient->close();
             _bidcosClient->open();
             _bidcosReInit = true;
         }
         else if(rpcType == RpcType::wired)
         {
+            _out.printWarning("Warning: Reconnecting HomeMatic Wired...");
             _wiredClient->close();
             _wiredClient->open();
             _wiredReInit = true;
         }
         else if(rpcType == RpcType::hmip)
         {
+            _out.printWarning("Warning: Reconnecting HomeMatic IP...");
             _hmipClient->close();
             _hmipClient->open();
             _hmipReInit = true;
