@@ -50,6 +50,7 @@ Ccu2::Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings
     _bidcosDevicesExist = false;
     _hmipNewDevicesCalled = false;
     _wiredNewDevicesCalled = false;
+    _forceReInit = false;
     _stopPingThread = false;
     _bidcosReInit = false;
     _hmipReInit = false;
@@ -94,6 +95,45 @@ Ccu2::~Ccu2()
     GD::bl->threadManager.join(_pingThread);
 }
 
+void Ccu2::reconnect(RpcType rpcType, bool forceReinit)
+{
+    try
+    {
+        if(rpcType == RpcType::bidcos)
+        {
+            _bidcosClient->close();
+            _bidcosClient->open();
+            _bidcosReInit = true;
+        }
+        else if(rpcType == RpcType::wired)
+        {
+            _wiredClient->close();
+            _wiredClient->open();
+            _wiredReInit = true;
+        }
+        else if(rpcType == RpcType::hmip)
+        {
+            _hmipClient->close();
+            _hmipClient->open();
+            _hmipReInit = true;
+        }
+
+        if(forceReinit) _forceReInit = true;
+    }
+    catch(const std::exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+}
+
 void Ccu2::init()
 {
     try
@@ -135,6 +175,7 @@ void Ccu2::init()
                 {
                     _out.printError("Error calling \"init\" for HomeMatic BidCoS: " + result->structValue->at("faultString")->stringValue);
                     _bidcosReInit = true;
+                    reconnect(RpcType::bidcos, false);
                 }
                 else _bidcosReInit = false;
             }
@@ -168,6 +209,7 @@ void Ccu2::init()
                 {
                     _out.printError("Error calling \"init\" for HomeMatic IP: " + result->structValue->at("faultString")->stringValue);
                     _hmipReInit = true;
+                    reconnect(RpcType::hmip, false);
                 }
                 else _hmipReInit = false;
             }
@@ -201,6 +243,7 @@ void Ccu2::init()
                 {
                     _out.printError("Error calling \"init\" for HomeMatic Wired: " + result->structValue->at("faultString")->stringValue);
                     _wiredReInit = true;
+                    reconnect(RpcType::wired, false);
                 }
                 else _wiredReInit = false;
             }
@@ -765,6 +808,7 @@ void Ccu2::listen(Ccu2::RpcType rpcType)
                 }
                 catch(SocketTimeOutException& ex)
                 {
+                    if(ex.getType() == SocketTimeOutException::SocketTimeOutType::readTimeout) reconnect(rpcType, true);
                     continue;
                 }
 
@@ -858,6 +902,11 @@ void Ccu2::ping()
             {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1000));
                 if(_stopped || _stopCallbackThread || _stopPingThread) return;
+                if(_forceReInit)
+                {
+                    _forceReInit = false;
+                    break;
+                }
             }
 
             if(_bidcosDevicesExist)
