@@ -951,7 +951,7 @@ void Ccu2::ping()
             {
                 if(regaReady())
                 {
-                    _out.printError("Error: No keep alive response received (BidCoS). Reinitializing...");
+                    if(!_bidcosReInit) _out.printError("Error: No keep alive response received (BidCoS). Reinitializing...");
                     init();
                 }
                 else _bidcosReInit = true;
@@ -961,7 +961,7 @@ void Ccu2::ping()
             {
                 if(regaReady())
                 {
-                    _out.printError("Error: No keep alive received (Wired). Reinitializing...");
+                    if(!_bidcosReInit) _out.printError("Error: No keep alive received (Wired). Reinitializing...");
                     init();
                 }
                 else _wiredReInit = true;
@@ -971,7 +971,7 @@ void Ccu2::ping()
             {
                 if(regaReady())
                 {
-                    _out.printError("Error: No keep alive received (HM-IP). Reinitializing...");
+                    if(!_bidcosReInit) _out.printError("Error: No keep alive received (HM-IP). Reinitializing...");
                     init();
                 }
                 else _hmipReInit = true;
