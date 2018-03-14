@@ -868,16 +868,19 @@ void Ccu2::listen(Ccu2::RpcType rpcType)
             {
                 _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
                 std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+                reconnect(rpcType, true);
             }
             catch(BaseLib::Exception& ex)
             {
                 _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
                 std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+                reconnect(rpcType, true);
             }
             catch(...)
             {
                 _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
                 std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+                reconnect(rpcType, true);
             }
         }
     }
