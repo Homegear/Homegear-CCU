@@ -99,6 +99,26 @@ void Ccu2::reconnect(RpcType rpcType, bool forceReinit)
 {
     try
     {
+        if(!regaReady())
+        {
+            GD::out.printInfo("Info: ReGa is not ready. Waiting for 10 seconds...");
+            int32_t i = 1;
+            while(!_stopped && !_stopCallbackThread)
+            {
+                if(i % 10 == 0)
+                {
+                    _lastPongBidcos.store(BaseLib::HelperFunctions::getTime());
+                    _lastPongWired.store(BaseLib::HelperFunctions::getTime());
+                    _lastPongHmip.store(BaseLib::HelperFunctions::getTime());
+                    if(regaReady()) break;
+                    GD::out.printInfo("Info: ReGa is not ready. Waiting for 10 seconds...");
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+                i++;
+                continue;
+            }
+        }
+
         if(rpcType == RpcType::bidcos)
         {
             _out.printWarning("Warning: Reconnecting HomeMatic BidCoS...");
