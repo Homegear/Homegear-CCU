@@ -99,9 +99,13 @@ void Ccu2::reconnect(RpcType rpcType, bool forceReinit)
 {
     try
     {
+        if(rpcType == RpcType::bidcos) _out.printWarning("Warning: Reconnecting HomeMatic BidCoS...");
+        else if(rpcType == RpcType::wired) _out.printWarning("Warning: Reconnecting HomeMatic Wired...");
+        else if(rpcType == RpcType::hmip) _out.printWarning("Warning: Reconnecting HomeMatic IP...");
+
         if(!regaReady())
         {
-            GD::out.printInfo("Info: ReGa is not ready. Waiting for 10 seconds...");
+            GD::out.printInfo("Info: ReGa is not ready (" + std::to_string((int32_t)rpcType) + "). Waiting for 10 seconds...");
             int32_t i = 1;
             while(!_stopped && !_stopCallbackThread)
             {
@@ -111,7 +115,7 @@ void Ccu2::reconnect(RpcType rpcType, bool forceReinit)
                     _lastPongWired.store(BaseLib::HelperFunctions::getTime());
                     _lastPongHmip.store(BaseLib::HelperFunctions::getTime());
                     if(regaReady()) break;
-                    GD::out.printInfo("Info: ReGa is not ready. Waiting for 10 seconds...");
+                    GD::out.printInfo("Info: ReGa is not ready (" + std::to_string((int32_t)rpcType) + "). Waiting for 10 seconds...");
                 }
                 std::this_thread::sleep_for(std::chrono::milliseconds(1000));
                 i++;
@@ -121,21 +125,18 @@ void Ccu2::reconnect(RpcType rpcType, bool forceReinit)
 
         if(rpcType == RpcType::bidcos)
         {
-            _out.printWarning("Warning: Reconnecting HomeMatic BidCoS...");
             _bidcosClient->close();
             _bidcosClient->open();
             _bidcosReInit = true;
         }
         else if(rpcType == RpcType::wired)
         {
-            _out.printWarning("Warning: Reconnecting HomeMatic Wired...");
             _wiredClient->close();
             _wiredClient->open();
             _wiredReInit = true;
         }
         else if(rpcType == RpcType::hmip)
         {
-            _out.printWarning("Warning: Reconnecting HomeMatic IP...");
             _hmipClient->close();
             _hmipClient->open();
             _hmipReInit = true;
