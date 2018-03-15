@@ -185,6 +185,9 @@ void Ccu2::init()
         _bidcosDevicesExist = false;
         _hmipNewDevicesCalled = false;
         _wiredNewDevicesCalled = false;
+        _lastPongBidcos.store(BaseLib::HelperFunctions::getTime());
+        _lastPongHmip.store(BaseLib::HelperFunctions::getTime());
+        _lastPongWired.store(BaseLib::HelperFunctions::getTime());
 
         if(_bidcosClient)
         {
@@ -691,7 +694,7 @@ void Ccu2::processPacket(int32_t clientId, bool binaryRpc, std::string& methodNa
     {
         BaseLib::PVariable response = std::make_shared<BaseLib::Variable>();
 
-        if(!binaryRpc) _lastPongHmip.store(BaseLib::HelperFunctions::getTime());
+        if(!parameters->empty() && parameters->at(0)->stringValue == _hmipIdString) _lastPongHmip.store(BaseLib::HelperFunctions::getTime());
 
         if(methodName == "system.multicall")
         {
@@ -962,7 +965,7 @@ void Ccu2::ping()
             {
                 if(regaReady())
                 {
-                    if(!_bidcosReInit) _out.printError("Error: No keep alive received (Wired). Reinitializing...");
+                    if(!_wiredReInit) _out.printError("Error: No keep alive received (Wired). Reinitializing...");
                     init();
                 }
                 else _wiredReInit = true;
@@ -972,7 +975,7 @@ void Ccu2::ping()
             {
                 if(regaReady())
                 {
-                    if(!_bidcosReInit) _out.printError("Error: No keep alive received (HM-IP). Reinitializing...");
+                    if(!_hmipReInit) _out.printError("Error: No keep alive received (HM-IP). Reinitializing...");
                     init();
                 }
                 else _hmipReInit = true;
