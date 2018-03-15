@@ -832,7 +832,11 @@ void Ccu2::listen(Ccu2::RpcType rpcType)
                 }
                 catch(SocketTimeOutException& ex)
                 {
-                    if(ex.getType() == SocketTimeOutException::SocketTimeOutType::readTimeout) reconnect(rpcType, true);
+                    if(ex.getType() == SocketTimeOutException::SocketTimeOutType::readTimeout)
+                    {
+                        if(_bidcosReInit || _wiredReInit || _hmipReInit) continue;
+                        reconnect(rpcType, true);
+                    }
                     continue;
                 }
 
