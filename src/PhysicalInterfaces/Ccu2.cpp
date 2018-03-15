@@ -99,6 +99,7 @@ void Ccu2::reconnect(RpcType rpcType, bool forceReinit)
 {
     try
     {
+        std::lock_guard<std::mutex> reconnectGuard(_reconnectMutex);
         if(rpcType == RpcType::bidcos) _out.printWarning("Warning: Reconnecting HomeMatic BidCoS...");
         else if(rpcType == RpcType::wired) _out.printWarning("Warning: Reconnecting HomeMatic Wired...");
         else if(rpcType == RpcType::hmip) _out.printWarning("Warning: Reconnecting HomeMatic IP...");
@@ -835,7 +836,11 @@ void Ccu2::listen(Ccu2::RpcType rpcType)
                 }
                 catch(SocketTimeOutException& ex)
                 {
-                    if(ex.getType() == SocketTimeOutException::SocketTimeOutType::readTimeout) reconnect(rpcType, true);
+                    if(ex.getType() == SocketTimeOutException::SocketTimeOutType::readTimeout)
+                    {
+                        if(_bidcosReInit || _wiredReInit || _hmipReInit) continue;
+                        reconnect(rpcType, true);
+                    }
                     continue;
                 }
 
@@ -1083,9 +1088,17 @@ BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, B
             _response = std::make_shared<BaseLib::Variable>();
         }
 
-        if(rpcType == RpcType::bidcos) _bidcosClient->proofwrite(data);
-        else if(rpcType == RpcType::hmip) _hmipClient->proofwrite(data);
-        else if(rpcType == RpcType::wired) _wiredClient->proofwrite(data);
+        try
+        {
+            if(rpcType == RpcType::bidcos) _bidcosClient->proofwrite(data);
+            else if(rpcType == RpcType::hmip) _hmipClient->proofwrite(data);
+            else if(rpcType == RpcType::wired) _wiredClient->proofwrite(data);
+        }
+        catch(SocketOperationException& ex)
+        {
+            _out.printError("Error: Could not write to socket: " + ex.what());
+            return BaseLib::Variable::createError(-1, ex.what());
+        }
 
         if(wait)
         {
