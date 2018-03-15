@@ -99,6 +99,7 @@ void Ccu2::reconnect(RpcType rpcType, bool forceReinit)
 {
     try
     {
+        std::lock_guard<std::mutex> reconnectGuard(_reconnectMutex);
         if(!regaReady())
         {
             GD::out.printInfo("Info: ReGa is not ready. Waiting for 10 seconds...");

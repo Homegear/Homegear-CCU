@@ -112,6 +112,8 @@ private:
     std::thread _initThread;
     std::thread _pingThread;
 
+    std::mutex _reconnectMutex;
+
     std::mutex _invokeMutex;
     std::mutex _requestMutex;
     std::mutex _requestWaitMutex;
