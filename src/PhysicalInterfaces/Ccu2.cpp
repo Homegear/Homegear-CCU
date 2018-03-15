@@ -1079,9 +1079,17 @@ BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, B
             _response = std::make_shared<BaseLib::Variable>();
         }
 
-        if(rpcType == RpcType::bidcos) _bidcosClient->proofwrite(data);
-        else if(rpcType == RpcType::hmip) _hmipClient->proofwrite(data);
-        else if(rpcType == RpcType::wired) _wiredClient->proofwrite(data);
+        try
+        {
+            if(rpcType == RpcType::bidcos) _bidcosClient->proofwrite(data);
+            else if(rpcType == RpcType::hmip) _hmipClient->proofwrite(data);
+            else if(rpcType == RpcType::wired) _wiredClient->proofwrite(data);
+        }
+        catch(SocketOperationException& ex)
+        {
+            _out.printError("Error: Could not write to socket: " + ex.what());
+            return BaseLib::Variable::createError(-1, ex.what());
+        }
 
         if(wait)
         {
