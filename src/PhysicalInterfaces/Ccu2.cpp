@@ -427,7 +427,7 @@ void Ccu2::startListening()
             if(!BaseLib::Net::isIp(_listenIp)) _listenIp = BaseLib::Net::getMyIpAddress(_listenIp);
             _out.printInfo("Info: My own IP address is " + _listenIp + ".");
 
-            _out.printInfo("Info: Connecting to IP " + _hostname + " and ports " + std::to_string(_port) + ", " + std::to_string(_port3) + (_port2 != 0 ? ", " + std::to_string(_port2) : "") + ".");
+            _out.printInfo("Info: Connecting to IP " + _hostname + " and ports " + (_port != 0 ? std::to_string(_port) : "") + (_port3 != 0 ? ", " + std::to_string(_port3) : "") + (_port2 != 0 ? ", " + std::to_string(_port2) : "") + ".");
 
             if(_port != 0)
             {
@@ -956,7 +956,7 @@ void Ccu2::ping()
                 }
             }
 
-            if((_bidcosDevicesExist && BaseLib::HelperFunctions::getTime() - _lastPongBidcos.load() > 70000) || _bidcosReInit)
+            if(_bidcosClient && ((_bidcosDevicesExist && BaseLib::HelperFunctions::getTime() - _lastPongBidcos.load() > 70000) || _bidcosReInit))
             {
                 if(regaReady())
                 {
@@ -966,7 +966,7 @@ void Ccu2::ping()
                 else _bidcosReInit = true;
             }
 
-            if((_wiredNewDevicesCalled && BaseLib::HelperFunctions::getTime() - _lastPongWired.load() > 3600000) || _wiredReInit)
+            if(_wiredClient && ((_wiredNewDevicesCalled && BaseLib::HelperFunctions::getTime() - _lastPongWired.load() > 3600000) || _wiredReInit))
             {
                 if(regaReady())
                 {
@@ -976,7 +976,7 @@ void Ccu2::ping()
                 else _wiredReInit = true;
             }
 
-            if((_hmipNewDevicesCalled && BaseLib::HelperFunctions::getTime() - _lastPongHmip.load() > 3600000) || _hmipReInit)
+            if(_hmipClient && ((_hmipNewDevicesCalled && BaseLib::HelperFunctions::getTime() - _lastPongHmip.load() > 3600000) || _hmipReInit))
             {
                 if(regaReady())
                 {
