@@ -625,7 +625,7 @@ void Ccu2::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet
         }
 
         if(packet.empty()) return;
-        bool isBinaryRpc = false;
+        bool isBinaryRpc = binaryRpc->processingStarted();
         uint32_t processedBytes = 0;
         try
         {
