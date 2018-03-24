@@ -605,12 +605,12 @@ void Ccu2::connectionClosed(int32_t clientId)
 
 void Ccu2::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet)
 {
+    std::shared_ptr<BaseLib::Rpc::BinaryRpc> binaryRpc;
+    std::shared_ptr<BaseLib::Http> http;
+
     try
     {
         if(GD::bl->debugLevel >= 5) _out.printDebug("Debug: Raw packet " + BaseLib::HelperFunctions::getHexString(packet));
-
-        std::shared_ptr<BaseLib::Rpc::BinaryRpc> binaryRpc;
-        std::shared_ptr<BaseLib::Http> http;
 
         {
             std::lock_guard<std::mutex> ccuClientInfoGuard(_ccuClientInfoMutex);
@@ -672,7 +672,6 @@ void Ccu2::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet
         {
             _out.printError("Error processing packet (1): " + ex.what());
             binaryRpc->reset();
-            http->reset();
         }
     }
     catch(const std::exception& ex)
@@ -687,6 +686,9 @@ void Ccu2::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet
     {
         _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
+
+    binaryRpc->reset();
+    http->reset();
 }
 
 void Ccu2::processPacket(int32_t clientId, bool binaryRpc, std::string& methodName, BaseLib::PArray parameters)
