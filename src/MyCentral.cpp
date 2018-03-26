@@ -979,9 +979,26 @@ void MyCentral::searchDevicesThread()
 {
     try
     {
+        std::string getNamesScript = "string sDevId;\nstring sChnId;\nstring sDPId;\nWrite('{');\n    boolean dFirst = true;\n    Write('\"Devices\":[');\n    foreach (sDevId, root.Devices().EnumUsedIDs()) {\n    object oDevice   = dom.GetObject(sDevId);\n    boolean bDevReady = oDevice.ReadyConfig();\n    string sDevInterfaceId = oDevice.Interface();\n    string sDevInterface   = dom.GetObject(sDevInterfaceId).Name();\n    if (bDevReady) {\n        if (dFirst) {\n          dFirst = false;\n        } else {\n          WriteLine(',');\n        }\n        Write('{');\n        Write('\"ID\":\"' # oDevice.ID());\n        Write('\",\"Name\":\"' # oDevice.Name());\n        Write('\",\"TypeName\":\"' # oDevice.TypeName());\n        Write('\",\"HssType\":\"' # oDevice.HssType() # '\",\"Address\":\"' # oDevice.Address() # '\",\"Interface\":\"' # sDevInterface # '\"');\n        Write('}');\n    }\n}\nWrite(']}');";
+
         auto interfaces = GD::interfaces->getInterfaces();
         for(auto& interface : interfaces)
         {
+			try
+			{
+				std::string regaResponse;
+				BaseLib::HttpClient httpClient(_bl, interface->getIpAddress(), 8181, false, false);
+				httpClient.post("/tclrega.exe", getNamesScript, regaResponse);
+				BaseLib::Rpc::JsonDecoder jsonDecoder(_bl);
+				auto namesJson = jsonDecoder.decode(regaResponse);
+                namesJson->print(true);
+			}
+			catch(BaseLib::Exception& ex)
+			{
+				GD::out.printWarning("Warning: Could not get names from CCU: " + ex.what());
+			}
+
+
             std::string methodName("listDevices");
             BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
             auto result = interface->invoke(Ccu2::RpcType::bidcos, methodName, parameters);
