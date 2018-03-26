@@ -716,7 +716,7 @@ void Ccu2::processPacket(int32_t clientId, bool binaryRpc, std::string& methodNa
 
                     if(methodNameIterator->second->stringValue == "event" && parameters->size() == 4 && parameters->at(2)->stringValue == "PONG")
                     {
-                        if(_bl->debugLevel >= 5) _out.printDebug("Debug: Pong received");
+                        if(_bl->debugLevel >= 5) _out.printDebug("Debug: Pong received. ID: " + parameters->at(0)->stringValue);
                         if(parameters->at(0)->stringValue == _bidcosIdString) _lastPongBidcos.store(BaseLib::HelperFunctions::getTime());
                         else if(parameters->at(0)->stringValue == _wiredIdString) _lastPongWired.store(BaseLib::HelperFunctions::getTime());
                     }
@@ -831,10 +831,7 @@ void Ccu2::listen(Ccu2::RpcType rpcType)
                 {
                     if(rpcType == RpcType::bidcos) bytesRead = _bidcosClient->proofread(buffer.data(), buffer.size());
                     if(rpcType == RpcType::wired) bytesRead = _wiredClient->proofread(buffer.data(), buffer.size());
-                    else if(rpcType == RpcType::hmip)
-                    {
-                        bytesRead = _hmipClient->proofread(buffer.data(), buffer.size());
-                    }
+                    else if(rpcType == RpcType::hmip) bytesRead = _hmipClient->proofread(buffer.data(), buffer.size());
                 }
                 catch(SocketTimeOutException& ex)
                 {

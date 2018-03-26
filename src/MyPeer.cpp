@@ -729,12 +729,38 @@ PVariable MyPeer::putParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channe
 
 				setValue(clientInfo, channel, i->first, i->second, false);
 			}
+
+            return std::make_shared<BaseLib::Variable>();
 		}
-		else
-		{
-			return Variable::createError(-3, "Parameter set type is not supported.");
-		}
-		return PVariable(new Variable(VariableType::tVoid));
+
+        auto interface = GD::interfaces->getInterface(_physicalInterfaceId);
+        if(!interface)
+        {
+            GD::out.printError("Error: Peer " + std::to_string(_peerID) + " could not get physical interface.");
+        }
+        else
+        {
+            PArray parameters = std::make_shared<Array>();
+            parameters->reserve(3);
+            parameters->push_back(std::make_shared<Variable>(_serialNumber + ":" + std::to_string(channel)));
+
+            if(type == ParameterGroup::Type::link)
+            {
+                auto remotePeer = central->getPeer(remoteID);
+                if(!remotePeer)
+                {
+                    GD::out.printError("Error: Could not find remote peer.");
+                    return Variable::createError(-1, "Remote peer not found.");
+                }
+
+                parameters->push_back(std::make_shared<Variable>(remotePeer->getSerialNumber() + ":" + std::to_string(remoteChannel)));
+            }
+            else parameters->push_back(std::make_shared<Variable>(std::string("MASTER")));
+            parameters->push_back(variables);
+            return interface->invoke(_rpcType, "putParamset", parameters);
+        }
+
+        return std::make_shared<BaseLib::Variable>();
 	}
 	catch(const std::exception& ex)
     {
