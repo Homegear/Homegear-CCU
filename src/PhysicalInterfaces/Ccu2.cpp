@@ -946,7 +946,7 @@ void Ccu2::ping()
                 }
             }
 
-            if(_bidcosDevicesExist)
+            if(_bidcosClient && _bidcosDevicesExist)
             {
                 BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
                 parameters->push_back(std::make_shared<BaseLib::Variable>(_bidcosIdString));
@@ -1065,7 +1065,8 @@ BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, B
     try
     {
         if(_stopped) return BaseLib::Variable::createError(-32500, "CCU2 is stopped.");
-        if(rpcType == RpcType::hmip && !_hmipClient) return BaseLib::Variable::createError(-32501, "HomeMatic IP is disabled.");
+        if(rpcType == RpcType::bidcos && !_bidcosClient) return BaseLib::Variable::createError(-32501, "HomeMatic BidCoS is disabled.");
+        else if(rpcType == RpcType::hmip && !_hmipClient) return BaseLib::Variable::createError(-32501, "HomeMatic IP is disabled.");
         else if(rpcType == RpcType::wired && !_wiredClient) return BaseLib::Variable::createError(-32501, "HomeMatic Wired is disabled.");
 
         std::lock_guard<std::mutex> invokeGuard(_invokeMutex);
