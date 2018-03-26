@@ -680,6 +680,63 @@ bool MyPeer::getParamsetHook2(PRpcClientInfo clientInfo, PParameter parameter, u
     return false;
 }
 
+PVariable MyPeer::getParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channel, ParameterGroup::Type::Enum type, uint64_t remoteID, int32_t remoteChannel, bool checkAcls)
+{
+	try
+	{
+		if(_disposing) return Variable::createError(-32500, "Peer is disposing.");
+		if(channel < 0) channel = 0;
+		if(remoteChannel < 0) remoteChannel = 0;
+		Functions::iterator functionIterator = _rpcDevice->functions.find(channel);
+		if(functionIterator == _rpcDevice->functions.end()) return Variable::createError(-2, "Unknown channel");
+		if(type == ParameterGroup::Type::none) type = ParameterGroup::Type::link;
+		PParameterGroup parameterGroup = functionIterator->second->getParameterGroup(type);
+		if(!parameterGroup) return Variable::createError(-3, "Unknown parameter set");
+
+		auto central = getCentral();
+		if(!central) return Variable::createError(-32500, "Could not get central.");
+
+		auto interface = GD::interfaces->getInterface(_physicalInterfaceId);
+		if(!interface)
+		{
+			GD::out.printError("Error: Peer " + std::to_string(_peerID) + " could not get physical interface.");
+		}
+		else
+		{
+			PArray parameters = std::make_shared<Array>();
+			parameters->reserve(2);
+			parameters->push_back(std::make_shared<Variable>(_serialNumber + ":" + std::to_string(channel)));
+
+			if(type == ParameterGroup::Type::link)
+			{
+				auto remotePeer = central->getPeer(remoteID);
+				if(!remotePeer)
+				{
+					GD::out.printError("Error: Could not find remote peer.");
+					return Variable::createError(-1, "Remote peer not found.");
+				}
+
+				parameters->push_back(std::make_shared<Variable>(remotePeer->getSerialNumber() + ":" + std::to_string(remoteChannel)));
+			}
+			else parameters->push_back(std::make_shared<Variable>(std::string("MASTER")));
+			return interface->invoke(_rpcType, "getParamset", parameters);
+		}
+	}
+	catch(const std::exception& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch(BaseLib::Exception& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch(...)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+	}
+	return Variable::createError(-32500, "Unknown application error.");
+}
+
 PVariable MyPeer::putParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channel, ParameterGroup::Type::Enum type, uint64_t remoteID, int32_t remoteChannel, PVariable variables, bool checkAcls, bool onlyPushing)
 {
 	try
