@@ -60,6 +60,10 @@ public:
     std::string getPort2() { return _settings->port2; }
     std::string getPort3() { return _settings->port3; }
 
+    bool hasBidCos() { return _bidcosClient && _bidcosClient->connected(); }
+    bool hasWired() { return _wiredClient && _wiredClient->connected(); }
+    bool hasHmip() { return _hmipClient && _hmipClient->connected(); }
+
     void startListening();
     void stopListening();
     void sendPacket(std::shared_ptr<BaseLib::Systems::Packet> packet) {};

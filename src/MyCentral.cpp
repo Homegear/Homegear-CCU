@@ -1033,76 +1033,90 @@ void MyCentral::searchDevicesThread()
 
             std::string methodName("listDevices");
             BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
-            auto result = interface->invoke(Ccu2::RpcType::bidcos, methodName, parameters);
-            if(result->errorStruct)
+
+            if(interface->hasBidCos())
             {
-                GD::out.printWarning("Warning: Error calling listDevices for HomeMatic BidCoS on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
-                continue;
+                auto result = interface->invoke(Ccu2::RpcType::bidcos, methodName, parameters);
+                if(result->errorStruct)
+                {
+                    GD::out.printWarning("Warning: Error calling listDevices for HomeMatic BidCoS on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
+                }
+                else
+                {
+                    for(auto& description : *result->arrayValue)
+                    {
+                        auto addressIterator = description->structValue->find("ADDRESS");
+                        if(addressIterator == description->structValue->end()) continue;
+                        std::string serialNumber = addressIterator->second->stringValue;
+                        BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
+                        if(serialNumber.find(':') != std::string::npos) continue;
+                        std::string interfaceId = interface->getID();
+                        std::string name;
+                        auto deviceNameIterator = deviceNames.find(serialNumber);
+                        if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
+                        pairDevice(Ccu2::RpcType::bidcos, interfaceId, serialNumber, name);
+                    }
+                }
             }
 
-            for(auto& description : *result->arrayValue)
+            if(interface->hasHmip())
             {
-                auto addressIterator = description->structValue->find("ADDRESS");
-                if(addressIterator == description->structValue->end()) continue;
-                std::string serialNumber = addressIterator->second->stringValue;
-                BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
-                if(serialNumber.find(':') != std::string::npos) continue;
-                std::string interfaceId = interface->getID();
-                std::string name;
-		auto deviceNameIterator = deviceNames.find(serialNumber);
-                if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
-                pairDevice(Ccu2::RpcType::bidcos, interfaceId, serialNumber, name);
+                auto result = interface->invoke(Ccu2::RpcType::hmip, methodName, parameters);
+                if(result->errorStruct)
+                {
+                    GD::out.printWarning("Warning: Error calling listDevices for HomeMatic IP on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
+                }
+                else
+                {
+                    for(auto& description : *result->arrayValue)
+                    {
+                        auto addressIterator = description->structValue->find("ADDRESS");
+                        if(addressIterator == description->structValue->end()) continue;
+                        std::string serialNumber = addressIterator->second->stringValue;
+                        BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
+                        if(serialNumber.find(':') != std::string::npos) continue;
+                        std::string interfaceId = interface->getID();
+                        std::string name;
+                        auto deviceNameIterator = deviceNames.find(serialNumber);
+                        if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
+                        pairDevice(Ccu2::RpcType::hmip, interfaceId, serialNumber, name);
+                    }
+                }
             }
 
-            result = interface->invoke(Ccu2::RpcType::hmip, methodName, parameters);
-            if(result->errorStruct)
+            if(interface->hasWired())
             {
-                GD::out.printWarning("Warning: Error calling listDevices for HomeMatic IP on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
-                continue;
-            }
-
-            for(auto& description : *result->arrayValue)
-            {
-                auto addressIterator = description->structValue->find("ADDRESS");
-                if(addressIterator == description->structValue->end()) continue;
-                std::string serialNumber = addressIterator->second->stringValue;
-                BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
-                if(serialNumber.find(':') != std::string::npos) continue;
-                std::string interfaceId = interface->getID();
-                std::string name;
-                auto deviceNameIterator = deviceNames.find(serialNumber);
-                if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
-                pairDevice(Ccu2::RpcType::hmip, interfaceId, serialNumber, name);
-            }
-
-			methodName = "searchDevices";
-			result = interface->invoke(Ccu2::RpcType::wired, methodName, parameters);
-			if(result->errorStruct)
-			{
-				GD::out.printWarning("Warning: Error calling searchDevices for HomeMatic Wired on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
-				continue;
-			}
-
-			methodName = "listDevices";
-            result = interface->invoke(Ccu2::RpcType::wired, methodName, parameters);
-            if(result->errorStruct)
-            {
-                GD::out.printWarning("Warning: Error calling listDevices for HomeMatic Wired on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
-                continue;
-            }
-
-            for(auto& description : *result->arrayValue)
-            {
-                auto addressIterator = description->structValue->find("ADDRESS");
-                if(addressIterator == description->structValue->end()) continue;
-                std::string serialNumber = addressIterator->second->stringValue;
-                BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
-                if(serialNumber.find(':') != std::string::npos) continue;
-                std::string interfaceId = interface->getID();
-                std::string name;
-                auto deviceNameIterator = deviceNames.find(serialNumber);
-                if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
-                pairDevice(Ccu2::RpcType::wired, interfaceId, serialNumber, name);
+                methodName = "searchDevices";
+                auto result = interface->invoke(Ccu2::RpcType::wired, methodName, parameters);
+                if(result->errorStruct)
+                {
+                    GD::out.printWarning("Warning: Error calling searchDevices for HomeMatic Wired on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
+                }
+                else
+                {
+                    methodName = "listDevices";
+                    result = interface->invoke(Ccu2::RpcType::wired, methodName, parameters);
+                    if(result->errorStruct)
+                    {
+                        GD::out.printWarning("Warning: Error calling listDevices for HomeMatic Wired on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
+                    }
+                    else
+                    {
+                        for(auto& description : *result->arrayValue)
+                        {
+                            auto addressIterator = description->structValue->find("ADDRESS");
+                            if(addressIterator == description->structValue->end()) continue;
+                            std::string serialNumber = addressIterator->second->stringValue;
+                            BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
+                            if(serialNumber.find(':') != std::string::npos) continue;
+                            std::string interfaceId = interface->getID();
+                            std::string name;
+                            auto deviceNameIterator = deviceNames.find(serialNumber);
+                            if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
+                            pairDevice(Ccu2::RpcType::wired, interfaceId, serialNumber, name);
+                        }
+                    }
+                }
             }
         }
     }
