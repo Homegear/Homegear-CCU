@@ -276,6 +276,11 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
             {
                 auto parameters = myPacket->getParameters();
                 if(parameters->size() < 2) return false;
+
+                auto interface = GD::interfaces->getInterface(senderId);
+                if(!interface) return false;
+                auto deviceNames = getCcuNames(interface->getIpAddress());
+
                 for(auto& description : *parameters->at(1)->arrayValue)
                 {
                     auto addressIterator = description->structValue->find("ADDRESS");
@@ -283,7 +288,10 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
                     std::string serialNumber = addressIterator->second->stringValue;
                     BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
                     if(serialNumber.find(':') != std::string::npos) continue;
-                    pairDevice((Ccu2::RpcType)parameters->at(0)->integerValue, senderId, serialNumber);
+                    std::string name;
+                    auto deviceNameIterator = deviceNames.find(serialNumber);
+                    if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
+                    pairDevice((Ccu2::RpcType)parameters->at(0)->integerValue, senderId, serialNumber, name);
                 }
                 return true;
             }
@@ -302,8 +310,8 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
             peer->packetReceived(myPacket);
             return true;
         }
-	}
-	catch(const std::exception& ex)
+    }
+    catch(const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
@@ -318,7 +326,44 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
     return false;
 }
 
-void MyCentral::pairDevice(Ccu2::RpcType rpcType, std::string& interfaceId, std::string& serialNumber)
+std::unordered_map<std::string, std::string> MyCentral::getCcuNames(std::string ipAddress)
+{
+    std::unordered_map<std::string, std::string> deviceNames;
+    try
+    {
+        std::string getNamesScript = "string sDevId;\nstring sChnId;\nstring sDPId;\nWrite('{');\n    boolean dFirst = true;\n    Write('\"Devices\":[');\n    foreach (sDevId, root.Devices().EnumUsedIDs()) {\n    object oDevice   = dom.GetObject(sDevId);\n    boolean bDevReady = oDevice.ReadyConfig();\n    string sDevInterfaceId = oDevice.Interface();\n    string sDevInterface   = dom.GetObject(sDevInterfaceId).Name();\n    if (bDevReady) {\n        if (dFirst) {\n          dFirst = false;\n        } else {\n          WriteLine(',');\n        }\n        Write('{');\n        Write('\"ID\":\"' # oDevice.ID());\n        Write('\",\"Name\":\"' # oDevice.Name());\n        Write('\",\"TypeName\":\"' # oDevice.TypeName());\n        Write('\",\"HssType\":\"' # oDevice.HssType() # '\",\"Address\":\"' # oDevice.Address() # '\",\"Interface\":\"' # sDevInterface # '\"');\n        Write('}');\n    }\n}\nWrite(']}');";
+        std::string regaResponse;
+        BaseLib::HttpClient httpClient(_bl, ipAddress, 8181, false, false);
+        httpClient.post("/tclrega.exe", getNamesScript, regaResponse);
+        BaseLib::Rpc::JsonDecoder jsonDecoder(_bl);
+        auto namesJson = jsonDecoder.decode(regaResponse);
+        auto devicesIterator = namesJson->structValue->find("Devices");
+        if(devicesIterator != namesJson->structValue->end()) namesJson = devicesIterator->second;
+        for(auto& nameElement : *namesJson->arrayValue)
+        {
+            auto addressIterator = nameElement->structValue->find("Address");
+            auto nameIterator = nameElement->structValue->find("Name");
+            if(addressIterator == nameElement->structValue->end() || nameIterator == nameElement->structValue->end()) continue;
+
+            deviceNames.emplace(addressIterator->second->stringValue, nameIterator->second->stringValue);
+        }
+    }
+    catch(const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    return deviceNames;
+}
+
+void MyCentral::pairDevice(Ccu2::RpcType rpcType, std::string& interfaceId, std::string& serialNumber, std::string& name)
 {
     try
     {
@@ -364,6 +409,7 @@ void MyCentral::pairDevice(Ccu2::RpcType rpcType, std::string& interfaceId, std:
             peer->initializeCentralConfig();
             peer->setPhysicalInterfaceId(interfaceId);
             peer->setRpcType(rpcType);
+            peer->setName(-1, name);
         }
         else
         {
@@ -373,6 +419,7 @@ void MyCentral::pairDevice(Ccu2::RpcType rpcType, std::string& interfaceId, std:
                 GD::out.printError("Error: RPC device could not be found anymore.");
                 return;
             }
+            if(peer->getName(-1) == "") peer->setName(-1, name);
         }
 
         lockGuard.lock();
@@ -979,25 +1026,10 @@ void MyCentral::searchDevicesThread()
 {
     try
     {
-        std::string getNamesScript = "string sDevId;\nstring sChnId;\nstring sDPId;\nWrite('{');\n    boolean dFirst = true;\n    Write('\"Devices\":[');\n    foreach (sDevId, root.Devices().EnumUsedIDs()) {\n    object oDevice   = dom.GetObject(sDevId);\n    boolean bDevReady = oDevice.ReadyConfig();\n    string sDevInterfaceId = oDevice.Interface();\n    string sDevInterface   = dom.GetObject(sDevInterfaceId).Name();\n    if (bDevReady) {\n        if (dFirst) {\n          dFirst = false;\n        } else {\n          WriteLine(',');\n        }\n        Write('{');\n        Write('\"ID\":\"' # oDevice.ID());\n        Write('\",\"Name\":\"' # oDevice.Name());\n        Write('\",\"TypeName\":\"' # oDevice.TypeName());\n        Write('\",\"HssType\":\"' # oDevice.HssType() # '\",\"Address\":\"' # oDevice.Address() # '\",\"Interface\":\"' # sDevInterface # '\"');\n        Write('}');\n    }\n}\nWrite(']}');";
-
         auto interfaces = GD::interfaces->getInterfaces();
         for(auto& interface : interfaces)
         {
-			try
-			{
-				std::string regaResponse;
-				BaseLib::HttpClient httpClient(_bl, interface->getIpAddress(), 8181, false, false);
-				httpClient.post("/tclrega.exe", getNamesScript, regaResponse);
-				BaseLib::Rpc::JsonDecoder jsonDecoder(_bl);
-				auto namesJson = jsonDecoder.decode(regaResponse);
-                namesJson->print(true);
-			}
-			catch(BaseLib::Exception& ex)
-			{
-				GD::out.printWarning("Warning: Could not get names from CCU: " + ex.what());
-			}
-
+            auto deviceNames = getCcuNames(interface->getIpAddress());
 
             std::string methodName("listDevices");
             BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
@@ -1016,7 +1048,10 @@ void MyCentral::searchDevicesThread()
                 BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
                 if(serialNumber.find(':') != std::string::npos) continue;
                 std::string interfaceId = interface->getID();
-                pairDevice(Ccu2::RpcType::bidcos, interfaceId, serialNumber);
+                std::string name;
+		auto deviceNameIterator = deviceNames.find(serialNumber);
+                if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
+                pairDevice(Ccu2::RpcType::bidcos, interfaceId, serialNumber, name);
             }
 
             result = interface->invoke(Ccu2::RpcType::hmip, methodName, parameters);
@@ -1034,7 +1069,10 @@ void MyCentral::searchDevicesThread()
                 BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
                 if(serialNumber.find(':') != std::string::npos) continue;
                 std::string interfaceId = interface->getID();
-                pairDevice(Ccu2::RpcType::hmip, interfaceId, serialNumber);
+                std::string name;
+                auto deviceNameIterator = deviceNames.find(serialNumber);
+                if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
+                pairDevice(Ccu2::RpcType::hmip, interfaceId, serialNumber, name);
             }
 
 			methodName = "searchDevices";
@@ -1061,7 +1099,10 @@ void MyCentral::searchDevicesThread()
                 BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
                 if(serialNumber.find(':') != std::string::npos) continue;
                 std::string interfaceId = interface->getID();
-                pairDevice(Ccu2::RpcType::wired, interfaceId, serialNumber);
+                std::string name;
+                auto deviceNameIterator = deviceNames.find(serialNumber);
+                if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
+                pairDevice(Ccu2::RpcType::wired, interfaceId, serialNumber, name);
             }
         }
     }
