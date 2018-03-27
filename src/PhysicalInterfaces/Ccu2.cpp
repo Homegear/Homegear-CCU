@@ -673,6 +673,7 @@ void Ccu2::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet
             _out.printError("Error processing packet (1): " + ex.what());
             binaryRpc->reset();
         }
+        return;
     }
     catch(const std::exception& ex)
     {
@@ -737,8 +738,11 @@ void Ccu2::processPacket(int32_t clientId, bool binaryRpc, std::string& methodNa
         }
         else if(methodName == "newDevices")
         {
-            if(!binaryRpc) _hmipNewDevicesCalled = true;
-            if(!binaryRpc) parameters->at(0)->integerValue = (int32_t)RpcType::hmip;
+            if(!binaryRpc)
+            {
+                parameters->at(0)->integerValue = (int32_t) RpcType::hmip;
+                _hmipNewDevicesCalled = true;
+            }
             else if(parameters->at(0)->stringValue == _bidcosIdString)
             {
                 parameters->at(0)->integerValue = (int32_t) RpcType::bidcos;
@@ -830,7 +834,7 @@ void Ccu2::listen(Ccu2::RpcType rpcType)
                 try
                 {
                     if(rpcType == RpcType::bidcos) bytesRead = _bidcosClient->proofread(buffer.data(), buffer.size());
-                    if(rpcType == RpcType::wired) bytesRead = _wiredClient->proofread(buffer.data(), buffer.size());
+                    else if(rpcType == RpcType::wired) bytesRead = _wiredClient->proofread(buffer.data(), buffer.size());
                     else if(rpcType == RpcType::hmip) bytesRead = _hmipClient->proofread(buffer.data(), buffer.size());
                 }
                 catch(SocketTimeOutException& ex)
