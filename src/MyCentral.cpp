@@ -332,6 +332,7 @@ std::unordered_map<std::string, std::string> MyCentral::getCcuNames(std::string 
     try
     {
         std::string getNamesScript = "string sDevId;\nstring sChnId;\nstring sDPId;\nWrite('{');\n    boolean dFirst = true;\n    Write('\"Devices\":[');\n    foreach (sDevId, root.Devices().EnumUsedIDs()) {\n    object oDevice   = dom.GetObject(sDevId);\n    boolean bDevReady = oDevice.ReadyConfig();\n    string sDevInterfaceId = oDevice.Interface();\n    string sDevInterface   = dom.GetObject(sDevInterfaceId).Name();\n    if (bDevReady) {\n        if (dFirst) {\n          dFirst = false;\n        } else {\n          WriteLine(',');\n        }\n        Write('{');\n        Write('\"ID\":\"' # oDevice.ID());\n        Write('\",\"Name\":\"' # oDevice.Name());\n        Write('\",\"TypeName\":\"' # oDevice.TypeName());\n        Write('\",\"HssType\":\"' # oDevice.HssType() # '\",\"Address\":\"' # oDevice.Address() # '\",\"Interface\":\"' # sDevInterface # '\"');\n        Write('}');\n    }\n}\nWrite(']}');";
+        BaseLib::Ansi ansi(true, false);
         std::string regaResponse;
         BaseLib::HttpClient httpClient(_bl, ipAddress, 8181, false, false);
         httpClient.post("/tclrega.exe", getNamesScript, regaResponse);
@@ -345,6 +346,7 @@ std::unordered_map<std::string, std::string> MyCentral::getCcuNames(std::string 
             auto nameIterator = nameElement->structValue->find("Name");
             if(addressIterator == nameElement->structValue->end() || nameIterator == nameElement->structValue->end()) continue;
 
+            nameIterator->second->stringValue = ansi.toUtf8(nameIterator->second->stringValue);
             deviceNames.emplace(addressIterator->second->stringValue, nameIterator->second->stringValue);
         }
     }
