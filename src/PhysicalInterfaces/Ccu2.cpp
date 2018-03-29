@@ -718,7 +718,11 @@ void Ccu2::processPacket(int32_t clientId, bool binaryRpc, std::string& methodNa
                     if(methodNameIterator->second->stringValue == "event" && parameters->size() == 4 && parameters->at(2)->stringValue == "PONG")
                     {
                         if(_bl->debugLevel >= 5) _out.printDebug("Debug: Pong received. ID: " + parameters->at(0)->stringValue);
-                        if(parameters->at(0)->stringValue == _bidcosIdString) _lastPongBidcos.store(BaseLib::HelperFunctions::getTime());
+                        if(parameters->at(0)->stringValue == _bidcosIdString)
+                        {
+                            _lastPongBidcos.store(BaseLib::HelperFunctions::getTime());
+                            if(_bl->debugLevel >= 5) _out.printDebug("Debug: BidCoS pong received. Stored time: " + std::to_string(_lastPongBidcos.load()));
+                        }
                         else if(parameters->at(0)->stringValue == _wiredIdString) _lastPongWired.store(BaseLib::HelperFunctions::getTime());
                     }
                     else
@@ -963,7 +967,7 @@ void Ccu2::ping()
             {
                 if(regaReady())
                 {
-                    if(!_bidcosReInit) _out.printError("Error: No keep alive response received (BidCoS). Reinitializing...");
+                    if(!_bidcosReInit) _out.printError("Error: No keep alive response received (BidCoS). Last pong: " + std::to_string(_lastPongBidcos.load()) + ". Reinitializing...");
                     init();
                 }
                 else _bidcosReInit = true;
