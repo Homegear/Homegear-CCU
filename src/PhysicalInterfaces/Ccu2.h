@@ -89,9 +89,9 @@ private:
     std::string _hmipIdString;
     std::string _wiredIdString;
     std::atomic_bool _stopPingThread;
-    std::atomic_long _lastPongBidcos;
-    std::atomic_long _lastPongHmip;
-    std::atomic_long _lastPongWired;
+    std::atomic<int64_t> _lastPongBidcos;
+    std::atomic<int64_t> _lastPongHmip;
+    std::atomic<int64_t> _lastPongWired;
     std::shared_ptr<BaseLib::TcpSocket> _server;
     std::unique_ptr<BaseLib::TcpSocket> _bidcosClient;
     std::unique_ptr<BaseLib::TcpSocket> _hmipClient;
