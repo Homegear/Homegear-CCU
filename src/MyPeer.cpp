@@ -598,6 +598,32 @@ PVariable MyPeer::getValueFromDevice(PParameter& parameter, int32_t channel, boo
 	return Variable::createError(-32500, "Unknown application error.");
 }
 
+PVariable MyPeer::getDeviceInfo(BaseLib::PRpcClientInfo clientInfo, std::map<std::string, bool> fields)
+{
+    try
+    {
+        PVariable info(Peer::getDeviceInfo(clientInfo, fields));
+        if(info->errorStruct) return info;
+
+        if(fields.empty() || fields.find("INTERFACE") != fields.end()) info->structValue->insert(StructElement("INTERFACE", PVariable(new Variable(_physicalInterfaceId))));
+
+        return info;
+    }
+    catch(const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    return PVariable();
+}
+
 PParameterGroup MyPeer::getParameterSet(int32_t channel, ParameterGroup::Type::Enum type)
 {
 	try
