@@ -64,12 +64,14 @@ public:
     bool hasWired() { return _wiredClient && _wiredClient->connected(); }
     bool hasHmip() { return _hmipClient && _hmipClient->connected(); }
 
+    BaseLib::PVariable getServiceMessages() { std::lock_guard<std::mutex> serviceMessagesGuard(_serviceMessagesMutex); return _serviceMessages; }
+
     void startListening();
     void stopListening();
     void sendPacket(std::shared_ptr<BaseLib::Systems::Packet> packet) {};
     BaseLib::PVariable invoke(RpcType rpcType, std::string methodName, BaseLib::PArray parameters, bool wait = true);
 
-    virtual bool isOpen() { return (!_bidcosClient || _bidcosClient->connected()) && (!_hmipClient || _hmipClient->connected()) && (!_wiredClient || _wiredClient->connected()); }
+    virtual bool isOpen() { return (_bidcosClient || _hmipClient || _wiredClient) && (!_bidcosClient || _bidcosClient->connected()) && (!_hmipClient || _hmipClient->connected()) && (!_wiredClient || _wiredClient->connected()); }
 private:
     struct CcuClientInfo
     {
@@ -125,6 +127,9 @@ private:
 
     std::mutex _responseMutex;
     BaseLib::PVariable _response;
+
+    std::mutex _serviceMessagesMutex;
+    BaseLib::PVariable _serviceMessages;
 
     void newConnection(int32_t clientId, std::string address, uint16_t port);
     void connectionClosed(int32_t clientId);

@@ -1024,6 +1024,62 @@ PVariable MyCentral::deleteDevice(BaseLib::PRpcClientInfo clientInfo, uint64_t p
     return Variable::createError(-32500, "Unknown application error.");
 }
 
+PVariable MyCentral::getServiceMessages(PRpcClientInfo clientInfo, bool returnId, bool checkAcls)
+{
+    try
+    {
+        auto serviceMessages = ICentral::getServiceMessages(clientInfo, returnId, checkAcls);
+        if(serviceMessages->errorStruct) return serviceMessages;
+
+        if(serviceMessages->arrayValue->size() == serviceMessages->arrayValue->capacity()) serviceMessages->arrayValue->reserve(serviceMessages->arrayValue->size() + 100);
+
+        auto interfaces = GD::interfaces->getInterfaces();
+        for(auto& interface : interfaces)
+        {
+            auto ccuServiceMessages = interface->getServiceMessages();
+            if(ccuServiceMessages->errorStruct) continue;
+
+            for(auto& element : *ccuServiceMessages->arrayValue)
+            {
+                if(element->arrayValue->size() != 3) continue;
+                std::string serialNumber = element->arrayValue->at(0)->stringValue;
+                serialNumber = BaseLib::HelperFunctions::splitFirst(serialNumber, ':').first;
+                auto peer = getPeer(serialNumber);
+                if(!peer) continue;
+
+                if(returnId)
+                {
+                    auto newElement = std::make_shared<Variable>(VariableType::tStruct);
+                    newElement->structValue->emplace("TYPE", std::make_shared<Variable>(2));
+                    newElement->structValue->emplace("PEER_ID", std::make_shared<Variable>(peer->getID()));
+                    newElement->structValue->emplace("TIMESTAMP", std::make_shared<Variable>(0));
+                    newElement->structValue->emplace("NAME", std::make_shared<Variable>(element->arrayValue->at(1)->stringValue));
+                    newElement->structValue->emplace("VALUE", element->arrayValue->at(2));
+                    serviceMessages->arrayValue->emplace_back(newElement);
+                }
+                else serviceMessages->arrayValue->emplace_back(element);
+            }
+
+            if(serviceMessages->arrayValue->size() == serviceMessages->arrayValue->capacity()) serviceMessages->arrayValue->reserve(serviceMessages->arrayValue->size() + 100);
+        }
+
+        return serviceMessages;
+    }
+    catch(const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    return Variable::createError(-32500, "Unknown application error.");
+}
+
 void MyCentral::searchDevicesThread()
 {
     try
