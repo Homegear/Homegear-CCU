@@ -55,6 +55,7 @@ Ccu2::Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings
     _bidcosDevicesExist = false;
     _hmipNewDevicesCalled = false;
     _wiredNewDevicesCalled = false;
+    _unreachable = false;
     _forceReInit = false;
     _stopPingThread = false;
     _bidcosReInit = false;
@@ -988,11 +989,19 @@ void Ccu2::ping()
                 auto data = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
                 data->structValue->emplace("IP_ADDRESS", std::make_shared<BaseLib::Variable>(_ipAddress));
                 data->structValue->emplace("SERIALNUMBER", std::make_shared<BaseLib::Variable>(_settings->serialNumber));
-                _bl->globalServiceMessages.set(MY_FAMILY_ID, 0, BaseLib::HelperFunctions::getTimeSeconds(), "CCU_UNREACHABLE", data);
+                if(!_unreachable)
+                {
+                    _unreachable = true;
+                    _bl->globalServiceMessages.set(MY_FAMILY_ID, 0, BaseLib::HelperFunctions::getTimeSeconds(), "CCU_UNREACHABLE." + _settings->serialNumber, data);
+                }
             }
             else
             {
-                _bl->globalServiceMessages.unset(MY_FAMILY_ID, 0);
+                if(_unreachable)
+                {
+                    _unreachable = false;
+                    _bl->globalServiceMessages.unset(MY_FAMILY_ID, 0);
+                }
 
                 auto serviceMessages = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tArray);
 

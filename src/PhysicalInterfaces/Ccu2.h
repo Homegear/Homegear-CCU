@@ -101,6 +101,7 @@ private:
     std::unique_ptr<BaseLib::Rpc::RpcEncoder> _rpcEncoder;
     std::unique_ptr<BaseLib::Rpc::RpcDecoder> _rpcDecoder;
     RpcType _connectedRpcType = RpcType::bidcos;
+    std::atomic_bool _unreachable;
     std::atomic_bool _forceReInit;
     std::atomic_bool _bidcosDevicesExist;
     std::atomic_bool _bidcosReInit;
