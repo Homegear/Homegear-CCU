@@ -1000,7 +1000,7 @@ void Ccu2::ping()
                 if(_unreachable)
                 {
                     _unreachable = false;
-                    _bl->globalServiceMessages.unset(MY_FAMILY_ID, 0);
+                    _bl->globalServiceMessages.unset(MY_FAMILY_ID, 0, "CCU_UNREACHABLE." + _settings->serialNumber);
                 }
 
                 auto serviceMessages = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tArray);
