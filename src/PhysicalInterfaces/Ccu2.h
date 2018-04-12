@@ -38,6 +38,7 @@
 #include <homegear-base/Encoding/XmlrpcDecoder.h>
 #include <homegear-base/Encoding/XmlrpcEncoder.h>
 #include <homegear-base/Encoding/Http.h>
+#include <homegear-base/Sockets/HttpClient.h>
 
 namespace MyFamily
 {
@@ -52,6 +53,14 @@ public:
         wired
     };
 
+    struct CcuServiceMessage
+    {
+        std::string serial;
+        std::string message;
+        bool value = false;
+        int32_t time = 0;
+    };
+
     Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings);
     virtual ~Ccu2();
 
@@ -64,7 +73,8 @@ public:
     bool hasWired() { return _wiredClient && _wiredClient->connected(); }
     bool hasHmip() { return _hmipClient && _hmipClient->connected(); }
 
-    BaseLib::PVariable getServiceMessages() { std::lock_guard<std::mutex> serviceMessagesGuard(_serviceMessagesMutex); return _serviceMessages; }
+    std::vector<std::shared_ptr<CcuServiceMessage>> getServiceMessages() { std::lock_guard<std::mutex> serviceMessagesGuard(_serviceMessagesMutex); return _serviceMessages; }
+    std::unordered_map<std::string, std::string> getNames();
 
     void startListening();
     void stopListening();
@@ -98,6 +108,7 @@ private:
     std::unique_ptr<BaseLib::TcpSocket> _bidcosClient;
     std::unique_ptr<BaseLib::TcpSocket> _hmipClient;
     std::unique_ptr<BaseLib::TcpSocket> _wiredClient;
+    std::unique_ptr<BaseLib::HttpClient> _httpClient;
     std::unique_ptr<BaseLib::Rpc::RpcEncoder> _rpcEncoder;
     std::unique_ptr<BaseLib::Rpc::RpcDecoder> _rpcDecoder;
     RpcType _connectedRpcType = RpcType::bidcos;
@@ -129,8 +140,11 @@ private:
     std::mutex _responseMutex;
     BaseLib::PVariable _response;
 
+    std::string _getServiceMessagesScript = "Write('{ \"serviceMessages\":[');\nboolean isFirst = true;\nstring serviceID;\nforeach (serviceID, dom.GetObject(ID_SERVICES).EnumUsedIDs())\n{\n  object serviceObj = dom.GetObject(serviceID);\n  integer state = serviceObj.AlState();\n  if (state == 1)\n  {\n    string err = serviceObj.Name().StrValueByIndex (\".\", 1);\n    object alObj = serviceObj.AlTriggerDP();\n    object chObj = dom.GetObject(dom.GetObject(alObj).Channel());\n    object devObj = dom.GetObject(chObj.Device());\n    string strDate = serviceObj.Timestamp().Format(\"%s\");\n    if (isFirst) { isFirst = false; } else { WriteLine(\",\"); }\n    Write('{\"address\":\"' # devObj.Address() # '\", \"state\":\"' # state # '\", \"message\":\"' # err # '\", \"time\":\"' # strDate # '\"}');\n  }\n}\nWrite(\"]}\");";
+    std::string _getNamesScript = "string sDevId;\nstring sChnId;\nstring sDPId;\nWrite('{');\n    boolean dFirst = true;\n    Write('\"Devices\":[');\n    foreach (sDevId, root.Devices().EnumUsedIDs()) {\n    object oDevice   = dom.GetObject(sDevId);\n    boolean bDevReady = oDevice.ReadyConfig();\n    string sDevInterfaceId = oDevice.Interface();\n    string sDevInterface   = dom.GetObject(sDevInterfaceId).Name();\n    if (bDevReady) {\n        if (dFirst) {\n          dFirst = false;\n        } else {\n          WriteLine(',');\n        }\n        Write('{');\n        Write('\"ID\":\"' # oDevice.ID());\n        Write('\",\"Name\":\"' # oDevice.Name());\n        Write('\",\"TypeName\":\"' # oDevice.TypeName());\n        Write('\",\"HssType\":\"' # oDevice.HssType() # '\",\"Address\":\"' # oDevice.Address() # '\",\"Interface\":\"' # sDevInterface # '\"');\n        Write('}');\n    }\n}\nWrite(']}');";
+
     std::mutex _serviceMessagesMutex;
-    BaseLib::PVariable _serviceMessages;
+    std::vector<std::shared_ptr<CcuServiceMessage>> _serviceMessages;
 
     void newConnection(int32_t clientId, std::string address, uint16_t port);
     void connectionClosed(int32_t clientId);
@@ -142,6 +156,7 @@ private:
     void reconnect(RpcType rpcType, bool forceReinit);
     void ping();
     bool regaReady();
+    void getCcuServiceMessages();
 };
 
 }

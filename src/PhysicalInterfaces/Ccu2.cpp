@@ -47,11 +47,6 @@ Ccu2::Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings
     _xmlrpcDecoder.reset(new BaseLib::Rpc::XmlrpcDecoder(GD::bl));
     _xmlrpcEncoder.reset(new BaseLib::Rpc::XmlrpcEncoder(GD::bl));
 
-    {
-        std::lock_guard<std::mutex> serviceMessagesGuard(_serviceMessagesMutex);
-        _serviceMessages = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tArray);
-    }
-
     _bidcosDevicesExist = false;
     _hmipNewDevicesCalled = false;
     _wiredNewDevicesCalled = false;
@@ -87,6 +82,8 @@ Ccu2::Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings
     if((_port2 < 1 || _port2 > 65535) && _port2 != 0) _port2 = 2010;
     _port3 = BaseLib::Math::getNumber(settings->port3);
     if((_port3 < 1 || _port3 > 65535) && _port3 != 0) _port3 = 2000;
+
+    _httpClient = std::unique_ptr<BaseLib::HttpClient>(new HttpClient(_bl, _hostname, 8181, false, false));
 }
 
 Ccu2::~Ccu2()
@@ -1003,49 +1000,7 @@ void Ccu2::ping()
                     _bl->globalServiceMessages.unset(MY_FAMILY_ID, 0, "CCU_UNREACHABLE." + _settings->serialNumber);
                 }
 
-                auto serviceMessages = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tArray);
-
-                if(_bidcosClient && _bidcosDevicesExist)
-                {
-                    BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
-                    auto result = invoke(RpcType::bidcos, "getServiceMessages", parameters);
-                    if(result->errorStruct)
-                    {
-                        _out.printError("Error calling \"getServiceMessages\" (BidCoS): " + result->structValue->at("faultString")->stringValue);
-                        _bidcosReInit = true;
-                        _bidcosClient->close();
-                    }
-                    else if(!result->arrayValue->empty()) serviceMessages->arrayValue->insert(serviceMessages->arrayValue->end(), result->arrayValue->begin(), result->arrayValue->end());
-                }
-
-                if(_wiredClient && _wiredNewDevicesCalled)
-                {
-                    BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
-                    auto result = invoke(RpcType::wired, "getServiceMessages", parameters);
-                    if(result->errorStruct)
-                    {
-                        _out.printError("Error calling \"getServiceMessages\" (Wired): " + result->structValue->at("faultString")->stringValue);
-                        _wiredReInit = true;
-                        _wiredClient->close();
-                    }
-                    else if(!result->arrayValue->empty()) serviceMessages->arrayValue->insert(serviceMessages->arrayValue->end(), result->arrayValue->begin(), result->arrayValue->end());
-                }
-
-                if(_hmipClient && _hmipNewDevicesCalled)
-                {
-                    BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
-                    auto result = invoke(RpcType::hmip, "getServiceMessages", parameters);
-                    if(result->errorStruct)
-                    {
-                        _out.printError("Error calling \"getServiceMessages\" (HM-IP): " + result->structValue->at("faultString")->stringValue);
-                        _hmipReInit = true;
-                        _hmipClient->close();
-                    }
-                    else if(!result->arrayValue->empty()) serviceMessages->arrayValue->insert(serviceMessages->arrayValue->end(), result->arrayValue->begin(), result->arrayValue->end());
-                }
-
-                std::lock_guard<std::mutex> serviceMessagesGuard(_serviceMessagesMutex);
-                _serviceMessages = serviceMessages;
+                getCcuServiceMessages();
             }
 
             if(_bidcosClient && _bidcosDevicesExist)
@@ -1282,6 +1237,96 @@ bool Ccu2::regaReady()
         _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return false;
+}
+
+std::unordered_map<std::string, std::string> Ccu2::getNames()
+{
+    std::unordered_map<std::string, std::string> deviceNames;
+    try
+    {
+        BaseLib::Ansi ansi(true, false);
+        std::string regaResponse;
+        _httpClient->post("/tclrega.exe", _getNamesScript, regaResponse);
+        BaseLib::Rpc::JsonDecoder jsonDecoder(_bl);
+        auto namesJson = jsonDecoder.decode(regaResponse);
+        auto devicesIterator = namesJson->structValue->find("Devices");
+        if(devicesIterator != namesJson->structValue->end()) namesJson = devicesIterator->second;
+        for(auto& nameElement : *namesJson->arrayValue)
+        {
+            auto addressIterator = nameElement->structValue->find("Address");
+            auto nameIterator = nameElement->structValue->find("Name");
+            if(addressIterator == nameElement->structValue->end() || nameIterator == nameElement->structValue->end()) continue;
+
+            nameIterator->second->stringValue = ansi.toUtf8(nameIterator->second->stringValue);
+            deviceNames.emplace(addressIterator->second->stringValue, nameIterator->second->stringValue);
+        }
+    }
+    catch(const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    return deviceNames;
+}
+
+void Ccu2::getCcuServiceMessages()
+{
+    try
+    {
+        BaseLib::Ansi ansi(true, false);
+        std::string regaResponse;
+        _httpClient->post("/tclrega.exe", _getServiceMessagesScript, regaResponse);
+        BaseLib::Rpc::JsonDecoder jsonDecoder(_bl);
+        auto serviceMessagesJson = jsonDecoder.decode(regaResponse);
+
+        std::lock_guard<std::mutex> serviceMessagesGuard(_serviceMessagesMutex);
+        _serviceMessages.clear();
+
+        auto serviceMessagesIterator = serviceMessagesJson->structValue->find("serviceMessages");
+        if(serviceMessagesIterator != serviceMessagesJson->structValue->end())
+        {
+            _serviceMessages.reserve(serviceMessagesIterator->second->arrayValue->size());
+            for(auto& serviceMessageElement : *serviceMessagesIterator->second->arrayValue)
+            {
+                auto addressIterator = serviceMessageElement->structValue->find("address");
+                auto stateIterator = serviceMessageElement->structValue->find("state");
+                auto messageIterator = serviceMessageElement->structValue->find("message");
+                auto timeIterator = serviceMessageElement->structValue->find("time");
+
+                if(addressIterator == serviceMessageElement->structValue->end() || stateIterator == serviceMessageElement->structValue->end() || messageIterator == serviceMessageElement->structValue->end() || timeIterator == serviceMessageElement->structValue->end())
+                {
+                    continue;
+                }
+
+                auto serviceMessage = std::make_shared<CcuServiceMessage>();
+                serviceMessage->serial = addressIterator->second->stringValue;
+                serviceMessage->value = stateIterator->second->stringValue == "1";
+                serviceMessage->message = messageIterator->second->stringValue;
+                serviceMessage->time = BaseLib::Math::getNumber(timeIterator->second->stringValue);
+
+                _serviceMessages.emplace_back(std::move(serviceMessage));
+            }
+        }
+    }
+    catch(const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
 }
 
 }

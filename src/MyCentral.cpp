@@ -279,7 +279,7 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
 
                 auto interface = GD::interfaces->getInterface(senderId);
                 if(!interface) return false;
-                auto deviceNames = getCcuNames(interface->getIpAddress());
+                auto deviceNames = interface->getNames();
 
                 for(auto& description : *parameters->at(1)->arrayValue)
                 {
@@ -324,45 +324,6 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return false;
-}
-
-std::unordered_map<std::string, std::string> MyCentral::getCcuNames(std::string ipAddress)
-{
-    std::unordered_map<std::string, std::string> deviceNames;
-    try
-    {
-        std::string getNamesScript = "string sDevId;\nstring sChnId;\nstring sDPId;\nWrite('{');\n    boolean dFirst = true;\n    Write('\"Devices\":[');\n    foreach (sDevId, root.Devices().EnumUsedIDs()) {\n    object oDevice   = dom.GetObject(sDevId);\n    boolean bDevReady = oDevice.ReadyConfig();\n    string sDevInterfaceId = oDevice.Interface();\n    string sDevInterface   = dom.GetObject(sDevInterfaceId).Name();\n    if (bDevReady) {\n        if (dFirst) {\n          dFirst = false;\n        } else {\n          WriteLine(',');\n        }\n        Write('{');\n        Write('\"ID\":\"' # oDevice.ID());\n        Write('\",\"Name\":\"' # oDevice.Name());\n        Write('\",\"TypeName\":\"' # oDevice.TypeName());\n        Write('\",\"HssType\":\"' # oDevice.HssType() # '\",\"Address\":\"' # oDevice.Address() # '\",\"Interface\":\"' # sDevInterface # '\"');\n        Write('}');\n    }\n}\nWrite(']}');";
-        BaseLib::Ansi ansi(true, false);
-        std::string regaResponse;
-        BaseLib::HttpClient httpClient(_bl, ipAddress, 8181, false, false);
-        httpClient.post("/tclrega.exe", getNamesScript, regaResponse);
-        BaseLib::Rpc::JsonDecoder jsonDecoder(_bl);
-        auto namesJson = jsonDecoder.decode(regaResponse);
-        auto devicesIterator = namesJson->structValue->find("Devices");
-        if(devicesIterator != namesJson->structValue->end()) namesJson = devicesIterator->second;
-        for(auto& nameElement : *namesJson->arrayValue)
-        {
-            auto addressIterator = nameElement->structValue->find("Address");
-            auto nameIterator = nameElement->structValue->find("Name");
-            if(addressIterator == nameElement->structValue->end() || nameIterator == nameElement->structValue->end()) continue;
-
-            nameIterator->second->stringValue = ansi.toUtf8(nameIterator->second->stringValue);
-            deviceNames.emplace(addressIterator->second->stringValue, nameIterator->second->stringValue);
-        }
-    }
-    catch(const std::exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
-    return deviceNames;
 }
 
 void MyCentral::pairDevice(Ccu2::RpcType rpcType, std::string& interfaceId, std::string& serialNumber, std::string& name)
@@ -1031,20 +992,16 @@ PVariable MyCentral::getServiceMessages(PRpcClientInfo clientInfo, bool returnId
         auto serviceMessages = ICentral::getServiceMessages(clientInfo, returnId, checkAcls);
         if(serviceMessages->errorStruct) return serviceMessages;
 
-        if(serviceMessages->arrayValue->size() == serviceMessages->arrayValue->capacity()) serviceMessages->arrayValue->reserve(serviceMessages->arrayValue->size() + 100);
-
         auto interfaces = GD::interfaces->getInterfaces();
         for(auto& interface : interfaces)
         {
             auto ccuServiceMessages = interface->getServiceMessages();
-            if(ccuServiceMessages->errorStruct) continue;
 
-            for(auto& element : *ccuServiceMessages->arrayValue)
+			serviceMessages->arrayValue->reserve(serviceMessages->arrayValue->size() + ccuServiceMessages.size());
+
+            for(auto& element : ccuServiceMessages)
             {
-                if(element->arrayValue->size() != 3) continue;
-                std::string serialNumber = element->arrayValue->at(0)->stringValue;
-                serialNumber = BaseLib::HelperFunctions::splitFirst(serialNumber, ':').first;
-                auto peer = getPeer(serialNumber);
+                auto peer = getPeer(element->serial);
                 if(!peer) continue;
 
                 if(returnId)
@@ -1052,15 +1009,21 @@ PVariable MyCentral::getServiceMessages(PRpcClientInfo clientInfo, bool returnId
                     auto newElement = std::make_shared<Variable>(VariableType::tStruct);
                     newElement->structValue->emplace("TYPE", std::make_shared<Variable>(2));
                     newElement->structValue->emplace("PEER_ID", std::make_shared<Variable>(peer->getID()));
-                    newElement->structValue->emplace("TIMESTAMP", std::make_shared<Variable>(0));
-                    newElement->structValue->emplace("NAME", std::make_shared<Variable>(element->arrayValue->at(1)->stringValue));
-                    newElement->structValue->emplace("VALUE", element->arrayValue->at(2));
+                    newElement->structValue->emplace("TIMESTAMP", std::make_shared<Variable>(element->time));
+                    newElement->structValue->emplace("MESSAGE", std::make_shared<Variable>(element->message));
+                    newElement->structValue->emplace("VALUE", std::make_shared<Variable>(element->value));
                     serviceMessages->arrayValue->emplace_back(newElement);
                 }
-                else serviceMessages->arrayValue->emplace_back(element);
+                else
+				{
+					auto newElement = std::make_shared<Variable>(VariableType::tArray);
+					newElement->arrayValue->reserve(3);
+					newElement->arrayValue->push_back(std::make_shared<BaseLib::Variable>(element->serial + ":0"));
+					newElement->arrayValue->push_back(std::make_shared<BaseLib::Variable>(element->message));
+					newElement->arrayValue->push_back(std::make_shared<BaseLib::Variable>(element->value));
+					serviceMessages->arrayValue->emplace_back(newElement);
+				}
             }
-
-            if(serviceMessages->arrayValue->size() == serviceMessages->arrayValue->capacity()) serviceMessages->arrayValue->reserve(serviceMessages->arrayValue->size() + 100);
         }
 
         return serviceMessages;
@@ -1087,7 +1050,7 @@ void MyCentral::searchDevicesThread()
         auto interfaces = GD::interfaces->getInterfaces();
         for(auto& interface : interfaces)
         {
-            auto deviceNames = getCcuNames(interface->getIpAddress());
+            auto deviceNames = interface->getNames();
 
             std::string methodName("listDevices");
             BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
