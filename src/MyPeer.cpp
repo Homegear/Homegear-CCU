@@ -579,6 +579,8 @@ PVariable MyPeer::getValueFromDevice(PParameter& parameter, int32_t channel, boo
             parameterIterator->second.setBinaryData(parameterData);
             if(parameterIterator->second.databaseId > 0) saveParameter(parameterIterator->second.databaseId, parameterData);
             else saveParameter(0, ParameterGroup::Type::Enum::variables, channel, parameter->id, parameterData);
+
+            return result;
 		}
 	}
 	catch(const std::exception& ex)
@@ -594,6 +596,32 @@ PVariable MyPeer::getValueFromDevice(PParameter& parameter, int32_t channel, boo
 		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
 	}
 	return Variable::createError(-32500, "Unknown application error.");
+}
+
+PVariable MyPeer::getDeviceInfo(BaseLib::PRpcClientInfo clientInfo, std::map<std::string, bool> fields)
+{
+    try
+    {
+        PVariable info(Peer::getDeviceInfo(clientInfo, fields));
+        if(info->errorStruct) return info;
+
+        if(fields.empty() || fields.find("INTERFACE") != fields.end()) info->structValue->insert(StructElement("INTERFACE", PVariable(new Variable(_physicalInterfaceId))));
+
+        return info;
+    }
+    catch(const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    return PVariable();
 }
 
 PParameterGroup MyPeer::getParameterSet(int32_t channel, ParameterGroup::Type::Enum type)
@@ -678,7 +706,64 @@ bool MyPeer::getParamsetHook2(PRpcClientInfo clientInfo, PParameter parameter, u
     return false;
 }
 
-PVariable MyPeer::putParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channel, ParameterGroup::Type::Enum type, uint64_t remoteID, int32_t remoteChannel, PVariable variables, bool onlyPushing)
+PVariable MyPeer::getParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channel, ParameterGroup::Type::Enum type, uint64_t remoteID, int32_t remoteChannel, bool checkAcls)
+{
+	try
+	{
+		if(_disposing) return Variable::createError(-32500, "Peer is disposing.");
+		if(channel < 0) channel = 0;
+		if(remoteChannel < 0) remoteChannel = 0;
+		Functions::iterator functionIterator = _rpcDevice->functions.find(channel);
+		if(functionIterator == _rpcDevice->functions.end()) return Variable::createError(-2, "Unknown channel");
+		if(type == ParameterGroup::Type::none) type = ParameterGroup::Type::link;
+		PParameterGroup parameterGroup = functionIterator->second->getParameterGroup(type);
+		if(!parameterGroup) return Variable::createError(-3, "Unknown parameter set");
+
+		auto central = getCentral();
+		if(!central) return Variable::createError(-32500, "Could not get central.");
+
+		auto interface = GD::interfaces->getInterface(_physicalInterfaceId);
+		if(!interface)
+		{
+			GD::out.printError("Error: Peer " + std::to_string(_peerID) + " could not get physical interface.");
+		}
+		else
+		{
+			PArray parameters = std::make_shared<Array>();
+			parameters->reserve(2);
+			parameters->push_back(std::make_shared<Variable>(_serialNumber + ":" + std::to_string(channel)));
+
+			if(type == ParameterGroup::Type::link)
+			{
+				auto remotePeer = central->getPeer(remoteID);
+				if(!remotePeer)
+				{
+					GD::out.printError("Error: Could not find remote peer.");
+					return Variable::createError(-1, "Remote peer not found.");
+				}
+
+				parameters->push_back(std::make_shared<Variable>(remotePeer->getSerialNumber() + ":" + std::to_string(remoteChannel)));
+			}
+			else parameters->push_back(std::make_shared<Variable>(std::string("MASTER")));
+			return interface->invoke(_rpcType, "getParamset", parameters);
+		}
+	}
+	catch(const std::exception& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch(BaseLib::Exception& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch(...)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+	}
+	return Variable::createError(-32500, "Unknown application error.");
+}
+
+PVariable MyPeer::putParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channel, ParameterGroup::Type::Enum type, uint64_t remoteID, int32_t remoteChannel, PVariable variables, bool checkAcls, bool onlyPushing)
 {
 	try
 	{
@@ -691,6 +776,9 @@ PVariable MyPeer::putParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channe
 		PParameterGroup parameterGroup = functionIterator->second->getParameterGroup(type);
 		if(!parameterGroup) return Variable::createError(-3, "Unknown parameter set.");
 		if(variables->structValue->empty()) return PVariable(new Variable(VariableType::tVoid));
+
+        auto central = getCentral();
+        if(!central) return Variable::createError(-32500, "Could not get central.");
 
 		if(type == ParameterGroup::Type::Enum::config)
 		{
@@ -719,14 +807,43 @@ PVariable MyPeer::putParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channe
 			for(Struct::iterator i = variables->structValue->begin(); i != variables->structValue->end(); ++i)
 			{
 				if(i->first.empty() || !i->second) continue;
+
+                if(checkAcls && !clientInfo->acls->checkVariableWriteAccess(central->getPeer(_peerID), channel, i->first)) continue;
+
 				setValue(clientInfo, channel, i->first, i->second, false);
 			}
+
+            return std::make_shared<BaseLib::Variable>();
 		}
-		else
-		{
-			return Variable::createError(-3, "Parameter set type is not supported.");
-		}
-		return PVariable(new Variable(VariableType::tVoid));
+
+        auto interface = GD::interfaces->getInterface(_physicalInterfaceId);
+        if(!interface)
+        {
+            GD::out.printError("Error: Peer " + std::to_string(_peerID) + " could not get physical interface.");
+        }
+        else
+        {
+            PArray parameters = std::make_shared<Array>();
+            parameters->reserve(3);
+            parameters->push_back(std::make_shared<Variable>(_serialNumber + ":" + std::to_string(channel)));
+
+            if(type == ParameterGroup::Type::link)
+            {
+                auto remotePeer = central->getPeer(remoteID);
+                if(!remotePeer)
+                {
+                    GD::out.printError("Error: Could not find remote peer.");
+                    return Variable::createError(-1, "Remote peer not found.");
+                }
+
+                parameters->push_back(std::make_shared<Variable>(remotePeer->getSerialNumber() + ":" + std::to_string(remoteChannel)));
+            }
+            else parameters->push_back(std::make_shared<Variable>(std::string("MASTER")));
+            parameters->push_back(variables);
+            return interface->invoke(_rpcType, "putParamset", parameters);
+        }
+
+        return std::make_shared<BaseLib::Variable>();
 	}
 	catch(const std::exception& ex)
     {

@@ -276,6 +276,11 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
             {
                 auto parameters = myPacket->getParameters();
                 if(parameters->size() < 2) return false;
+
+                auto interface = GD::interfaces->getInterface(senderId);
+                if(!interface) return false;
+                auto deviceNames = interface->getNames();
+
                 for(auto& description : *parameters->at(1)->arrayValue)
                 {
                     auto addressIterator = description->structValue->find("ADDRESS");
@@ -283,7 +288,10 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
                     std::string serialNumber = addressIterator->second->stringValue;
                     BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
                     if(serialNumber.find(':') != std::string::npos) continue;
-                    pairDevice((Ccu2::RpcType)parameters->at(0)->integerValue, senderId, serialNumber);
+                    std::string name;
+                    auto deviceNameIterator = deviceNames.find(serialNumber);
+                    if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
+                    pairDevice((Ccu2::RpcType)parameters->at(0)->integerValue, senderId, serialNumber, name);
                 }
                 return true;
             }
@@ -302,8 +310,8 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
             peer->packetReceived(myPacket);
             return true;
         }
-	}
-	catch(const std::exception& ex)
+    }
+    catch(const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
@@ -318,7 +326,7 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
     return false;
 }
 
-void MyCentral::pairDevice(Ccu2::RpcType rpcType, std::string& interfaceId, std::string& serialNumber)
+void MyCentral::pairDevice(Ccu2::RpcType rpcType, std::string& interfaceId, std::string& serialNumber, std::string& name)
 {
     try
     {
@@ -364,6 +372,7 @@ void MyCentral::pairDevice(Ccu2::RpcType rpcType, std::string& interfaceId, std:
             peer->initializeCentralConfig();
             peer->setPhysicalInterfaceId(interfaceId);
             peer->setRpcType(rpcType);
+            peer->setName(-1, name);
         }
         else
         {
@@ -373,6 +382,7 @@ void MyCentral::pairDevice(Ccu2::RpcType rpcType, std::string& interfaceId, std:
                 GD::out.printError("Error: RPC device could not be found anymore.");
                 return;
             }
+            if(peer->getName(-1) == "") peer->setName(-1, name);
         }
 
         lockGuard.lock();
@@ -391,7 +401,8 @@ void MyCentral::pairDevice(Ccu2::RpcType rpcType, std::string& interfaceId, std:
             {
                 deviceDescriptions->arrayValue->push_back(*j);
             }
-            raiseRPCNewDevices(deviceDescriptions);
+            std::vector<uint64_t> newIds{ peer->getID() };
+            raiseRPCNewDevices(newIds, deviceDescriptions);
         }
         else
         {
@@ -466,7 +477,8 @@ void MyCentral::deletePeer(uint64_t id)
 			if(_peersById.find(id) != _peersById.end()) _peersById.erase(id);
 		}
 
-		raiseRPCDeleteDevices(deviceAddresses, deviceInfo);
+        std::vector<uint64_t> deletedIds{ id };
+		raiseRPCDeleteDevices(deletedIds, deviceAddresses, deviceInfo);
 
 		int32_t i = 0;
 		while(peer.use_count() > 1 && i < 600)
@@ -942,7 +954,7 @@ PVariable MyCentral::deleteDevice(BaseLib::PRpcClientInfo clientInfo, uint64_t p
 
         std::string interfaceId = peer->getPhysicalInterfaceId();
         auto interface = GD::interfaces->getInterface(interfaceId);
-        if(interface)
+        if(interface && (flags & 8))
         {
             PArray parameters = std::make_shared<Array>();
             parameters->reserve(2);
@@ -973,96 +985,50 @@ PVariable MyCentral::deleteDevice(BaseLib::PRpcClientInfo clientInfo, uint64_t p
     return Variable::createError(-32500, "Unknown application error.");
 }
 
-PVariable MyCentral::getDeviceInfo(BaseLib::PRpcClientInfo clientInfo, uint64_t id, std::map<std::string, bool> fields)
+PVariable MyCentral::getServiceMessages(PRpcClientInfo clientInfo, bool returnId, bool checkAcls)
 {
-	try
-	{
-		if(id > 0)
-		{
-			std::shared_ptr<MyPeer> peer(getPeer(id));
-			if(!peer) return Variable::createError(-2, "Unknown device.");
-
-			return peer->getDeviceInfo(clientInfo, fields);
-		}
-		else
-		{
-			PVariable array(new Variable(VariableType::tArray));
-
-			std::vector<std::shared_ptr<MyPeer>> peers;
-			//Copy all peers first, because listDevices takes very long and we don't want to lock _peersMutex too long
-			_peersMutex.lock();
-			for(std::map<uint64_t, std::shared_ptr<BaseLib::Systems::Peer>>::iterator i = _peersById.begin(); i != _peersById.end(); ++i)
-			{
-				peers.push_back(std::dynamic_pointer_cast<MyPeer>(i->second));
-			}
-			_peersMutex.unlock();
-
-			for(std::vector<std::shared_ptr<MyPeer>>::iterator i = peers.begin(); i != peers.end(); ++i)
-			{
-				//listDevices really needs a lot of resources, so wait a little bit after each device
-				std::this_thread::sleep_for(std::chrono::milliseconds(3));
-				PVariable info = (*i)->getDeviceInfo(clientInfo, fields);
-				if(!info) continue;
-				array->arrayValue->push_back(info);
-			}
-
-			return array;
-		}
-	}
-	catch(const std::exception& ex)
+    try
     {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
-    return Variable::createError(-32500, "Unknown application error.");
-}
+        auto serviceMessages = ICentral::getServiceMessages(clientInfo, returnId, checkAcls);
+        if(serviceMessages->errorStruct) return serviceMessages;
 
-PVariable MyCentral::putParamset(BaseLib::PRpcClientInfo clientInfo, std::string serialNumber, int32_t channel, ParameterGroup::Type::Enum type, std::string remoteSerialNumber, int32_t remoteChannel, PVariable paramset)
-{
-	try
-	{
-		std::shared_ptr<MyPeer> peer(getPeer(serialNumber));
-		uint64_t remoteID = 0;
-		if(!remoteSerialNumber.empty())
-		{
-			std::shared_ptr<MyPeer> remotePeer(getPeer(remoteSerialNumber));
-			if(!remotePeer) return Variable::createError(-3, "Remote peer is unknown.");
-			remoteID = remotePeer->getID();
-		}
-		if(peer) return peer->putParamset(clientInfo, channel, type, remoteID, remoteChannel, paramset);
-		return Variable::createError(-2, "Unknown device.");
-	}
-	catch(const std::exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
-    return Variable::createError(-32500, "Unknown application error.");
-}
+        auto interfaces = GD::interfaces->getInterfaces();
+        for(auto& interface : interfaces)
+        {
+            auto ccuServiceMessages = interface->getServiceMessages();
 
-PVariable MyCentral::putParamset(BaseLib::PRpcClientInfo clientInfo, uint64_t peerID, int32_t channel, ParameterGroup::Type::Enum type, uint64_t remoteID, int32_t remoteChannel, PVariable paramset)
-{
-	try
-	{
-		std::shared_ptr<MyPeer> peer(getPeer(peerID));
-		if(peer) return peer->putParamset(clientInfo, channel, type, remoteID, remoteChannel, paramset);
-		return Variable::createError(-2, "Unknown device.");
-	}
-	catch(const std::exception& ex)
+			serviceMessages->arrayValue->reserve(serviceMessages->arrayValue->size() + ccuServiceMessages.size());
+
+            for(auto& element : ccuServiceMessages)
+            {
+                auto peer = getPeer(element->serial);
+                if(!peer) continue;
+
+                if(returnId)
+                {
+                    auto newElement = std::make_shared<Variable>(VariableType::tStruct);
+                    newElement->structValue->emplace("TYPE", std::make_shared<Variable>(2));
+                    newElement->structValue->emplace("PEER_ID", std::make_shared<Variable>(peer->getID()));
+                    newElement->structValue->emplace("TIMESTAMP", std::make_shared<Variable>(element->time));
+                    newElement->structValue->emplace("MESSAGE", std::make_shared<Variable>(element->message));
+                    newElement->structValue->emplace("VALUE", std::make_shared<Variable>(element->value));
+                    serviceMessages->arrayValue->emplace_back(newElement);
+                }
+                else
+				{
+					auto newElement = std::make_shared<Variable>(VariableType::tArray);
+					newElement->arrayValue->reserve(3);
+					newElement->arrayValue->push_back(std::make_shared<BaseLib::Variable>(element->serial + ":0"));
+					newElement->arrayValue->push_back(std::make_shared<BaseLib::Variable>(element->message));
+					newElement->arrayValue->push_back(std::make_shared<BaseLib::Variable>(element->value));
+					serviceMessages->arrayValue->emplace_back(newElement);
+				}
+            }
+        }
+
+        return serviceMessages;
+    }
+    catch(const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
@@ -1084,69 +1050,94 @@ void MyCentral::searchDevicesThread()
         auto interfaces = GD::interfaces->getInterfaces();
         for(auto& interface : interfaces)
         {
+            auto deviceNames = interface->getNames();
+
             std::string methodName("listDevices");
             BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
-            auto result = interface->invoke(Ccu2::RpcType::bidcos, methodName, parameters);
-            if(result->errorStruct)
+
+            if(interface->hasBidCos())
             {
-                GD::out.printWarning("Warning: Error calling listDevices for HomeMatic BidCoS on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
-                continue;
+                auto result = interface->invoke(Ccu2::RpcType::bidcos, methodName, parameters);
+                if(result->errorStruct)
+                {
+                    GD::out.printWarning("Warning: Error calling listDevices for HomeMatic BidCoS on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
+                }
+                else
+                {
+                    for(auto& description : *result->arrayValue)
+                    {
+                        auto addressIterator = description->structValue->find("ADDRESS");
+                        if(addressIterator == description->structValue->end()) continue;
+                        std::string serialNumber = addressIterator->second->stringValue;
+                        BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
+                        if(serialNumber.find(':') != std::string::npos) continue;
+                        std::string interfaceId = interface->getID();
+                        std::string name;
+                        auto deviceNameIterator = deviceNames.find(serialNumber);
+                        if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
+                        pairDevice(Ccu2::RpcType::bidcos, interfaceId, serialNumber, name);
+                    }
+                }
             }
 
-            for(auto& description : *result->arrayValue)
+            if(interface->hasHmip())
             {
-                auto addressIterator = description->structValue->find("ADDRESS");
-                if(addressIterator == description->structValue->end()) continue;
-                std::string serialNumber = addressIterator->second->stringValue;
-                BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
-                if(serialNumber.find(':') != std::string::npos) continue;
-                std::string interfaceId = interface->getID();
-                pairDevice(Ccu2::RpcType::bidcos, interfaceId, serialNumber);
+                auto result = interface->invoke(Ccu2::RpcType::hmip, methodName, parameters);
+                if(result->errorStruct)
+                {
+                    GD::out.printWarning("Warning: Error calling listDevices for HomeMatic IP on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
+                }
+                else
+                {
+                    for(auto& description : *result->arrayValue)
+                    {
+                        auto addressIterator = description->structValue->find("ADDRESS");
+                        if(addressIterator == description->structValue->end()) continue;
+                        std::string serialNumber = addressIterator->second->stringValue;
+                        BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
+                        if(serialNumber.find(':') != std::string::npos) continue;
+                        std::string interfaceId = interface->getID();
+                        std::string name;
+                        auto deviceNameIterator = deviceNames.find(serialNumber);
+                        if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
+                        pairDevice(Ccu2::RpcType::hmip, interfaceId, serialNumber, name);
+                    }
+                }
             }
 
-            result = interface->invoke(Ccu2::RpcType::hmip, methodName, parameters);
-            if(result->errorStruct)
+            if(interface->hasWired())
             {
-                GD::out.printWarning("Warning: Error calling listDevices for HomeMatic IP on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
-                continue;
-            }
-
-            for(auto& description : *result->arrayValue)
-            {
-                auto addressIterator = description->structValue->find("ADDRESS");
-                if(addressIterator == description->structValue->end()) continue;
-                std::string serialNumber = addressIterator->second->stringValue;
-                BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
-                if(serialNumber.find(':') != std::string::npos) continue;
-                std::string interfaceId = interface->getID();
-                pairDevice(Ccu2::RpcType::hmip, interfaceId, serialNumber);
-            }
-
-			methodName = "searchDevices";
-			result = interface->invoke(Ccu2::RpcType::wired, methodName, parameters);
-			if(result->errorStruct)
-			{
-				GD::out.printWarning("Warning: Error calling searchDevices for HomeMatic Wired on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
-				continue;
-			}
-
-			methodName = "listDevices";
-            result = interface->invoke(Ccu2::RpcType::wired, methodName, parameters);
-            if(result->errorStruct)
-            {
-                GD::out.printWarning("Warning: Error calling listDevices for HomeMatic Wired on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
-                continue;
-            }
-
-            for(auto& description : *result->arrayValue)
-            {
-                auto addressIterator = description->structValue->find("ADDRESS");
-                if(addressIterator == description->structValue->end()) continue;
-                std::string serialNumber = addressIterator->second->stringValue;
-                BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
-                if(serialNumber.find(':') != std::string::npos) continue;
-                std::string interfaceId = interface->getID();
-                pairDevice(Ccu2::RpcType::wired, interfaceId, serialNumber);
+                methodName = "searchDevices";
+                auto result = interface->invoke(Ccu2::RpcType::wired, methodName, parameters);
+                if(result->errorStruct)
+                {
+                    GD::out.printWarning("Warning: Error calling searchDevices for HomeMatic Wired on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
+                }
+                else
+                {
+                    methodName = "listDevices";
+                    result = interface->invoke(Ccu2::RpcType::wired, methodName, parameters);
+                    if(result->errorStruct)
+                    {
+                        GD::out.printWarning("Warning: Error calling listDevices for HomeMatic Wired on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
+                    }
+                    else
+                    {
+                        for(auto& description : *result->arrayValue)
+                        {
+                            auto addressIterator = description->structValue->find("ADDRESS");
+                            if(addressIterator == description->structValue->end()) continue;
+                            std::string serialNumber = addressIterator->second->stringValue;
+                            BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
+                            if(serialNumber.find(':') != std::string::npos) continue;
+                            std::string interfaceId = interface->getID();
+                            std::string name;
+                            auto deviceNameIterator = deviceNames.find(serialNumber);
+                            if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
+                            pairDevice(Ccu2::RpcType::wired, interfaceId, serialNumber, name);
+                        }
+                    }
+                }
             }
         }
     }

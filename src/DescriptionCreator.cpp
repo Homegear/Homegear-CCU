@@ -299,6 +299,7 @@ void DescriptionCreator::addParameterSet(Ccu2::RpcType rpcType, std::shared_ptr<
                         BaseLib::DeviceDescription::EnumerationValue value;
                         value.id = enumElement->stringValue;
                         value.index = index;
+                        index++;
                         logical->values.push_back(value);
                     }
                 }

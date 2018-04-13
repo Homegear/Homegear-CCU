@@ -38,6 +38,7 @@
 #include <homegear-base/Encoding/XmlrpcDecoder.h>
 #include <homegear-base/Encoding/XmlrpcEncoder.h>
 #include <homegear-base/Encoding/Http.h>
+#include <homegear-base/Sockets/HttpClient.h>
 
 namespace MyFamily
 {
@@ -52,6 +53,14 @@ public:
         wired
     };
 
+    struct CcuServiceMessage
+    {
+        std::string serial;
+        std::string message;
+        bool value = false;
+        int32_t time = 0;
+    };
+
     Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings);
     virtual ~Ccu2();
 
@@ -60,13 +69,26 @@ public:
     std::string getPort2() { return _settings->port2; }
     std::string getPort3() { return _settings->port3; }
 
+    bool hasBidCos() { return _bidcosClient && _bidcosClient->connected(); }
+    bool hasWired() { return _wiredClient && _wiredClient->connected(); }
+    bool hasHmip() { return _hmipClient && _hmipClient->connected(); }
+
+    std::vector<std::shared_ptr<CcuServiceMessage>> getServiceMessages() { std::lock_guard<std::mutex> serviceMessagesGuard(_serviceMessagesMutex); return _serviceMessages; }
+    std::unordered_map<std::string, std::string> getNames();
+
     void startListening();
     void stopListening();
     void sendPacket(std::shared_ptr<BaseLib::Systems::Packet> packet) {};
     BaseLib::PVariable invoke(RpcType rpcType, std::string methodName, BaseLib::PArray parameters, bool wait = true);
 
-    virtual bool isOpen() { return _bidcosClient && _bidcosClient->connected() && (!_hmipClient || _hmipClient->connected()) && (!_wiredClient || _wiredClient->connected()); }
+    virtual bool isOpen() { return (_bidcosClient || _hmipClient || _wiredClient) && (!_bidcosClient || _bidcosClient->connected()) && (!_hmipClient || _hmipClient->connected()) && (!_wiredClient || _wiredClient->connected()); }
 private:
+    struct CcuClientInfo
+    {
+        std::shared_ptr<BaseLib::Rpc::BinaryRpc> binaryRpc;
+        std::shared_ptr<BaseLib::Http> http;
+    };
+
     BaseLib::Output _out;
     bool _noHost = true;
     std::atomic_bool _stopped;
@@ -79,20 +101,27 @@ private:
     std::string _hmipIdString;
     std::string _wiredIdString;
     std::atomic_bool _stopPingThread;
-    std::atomic_long _lastPongBidcos;
-    std::atomic_long _lastPongHmip;
-    std::atomic_long _lastPongWired;
+    std::atomic<int64_t> _lastPongBidcos;
+    std::atomic<int64_t> _lastPongHmip;
+    std::atomic<int64_t> _lastPongWired;
     std::shared_ptr<BaseLib::TcpSocket> _server;
     std::unique_ptr<BaseLib::TcpSocket> _bidcosClient;
     std::unique_ptr<BaseLib::TcpSocket> _hmipClient;
     std::unique_ptr<BaseLib::TcpSocket> _wiredClient;
+    std::unique_ptr<BaseLib::HttpClient> _httpClient;
     std::unique_ptr<BaseLib::Rpc::RpcEncoder> _rpcEncoder;
     std::unique_ptr<BaseLib::Rpc::RpcDecoder> _rpcDecoder;
+    RpcType _connectedRpcType = RpcType::bidcos;
+    std::atomic_bool _unreachable;
+    std::atomic_bool _forceReInit;
+    std::atomic_bool _bidcosDevicesExist;
+    std::atomic_bool _bidcosReInit;
     std::atomic_bool _hmipNewDevicesCalled;
+    std::atomic_bool _hmipReInit;
     std::atomic_bool _wiredNewDevicesCalled;
-    std::atomic_bool _isBinaryRpc;
-    std::unique_ptr<BaseLib::Rpc::BinaryRpc> _binaryRpc;
-    std::unique_ptr<BaseLib::Http> _http;
+    std::atomic_bool _wiredReInit;
+    std::mutex _ccuClientInfoMutex;
+    std::map<int32_t, CcuClientInfo> _ccuClientInfo;
     std::unique_ptr<BaseLib::Rpc::XmlrpcEncoder> _xmlrpcEncoder;
     std::unique_ptr<BaseLib::Rpc::XmlrpcDecoder> _xmlrpcDecoder;
 
@@ -100,6 +129,8 @@ private:
     std::thread _listenThread3;
     std::thread _initThread;
     std::thread _pingThread;
+
+    std::mutex _reconnectMutex;
 
     std::mutex _invokeMutex;
     std::mutex _requestMutex;
@@ -109,14 +140,23 @@ private:
     std::mutex _responseMutex;
     BaseLib::PVariable _response;
 
+    std::string _getServiceMessagesScript = "Write('{ \"serviceMessages\":[');\nboolean isFirst = true;\nstring serviceID;\nforeach (serviceID, dom.GetObject(ID_SERVICES).EnumUsedIDs())\n{\n  object serviceObj = dom.GetObject(serviceID);\n  integer state = serviceObj.AlState();\n  if (state == 1)\n  {\n    string err = serviceObj.Name().StrValueByIndex (\".\", 1);\n    object alObj = serviceObj.AlTriggerDP();\n    object chObj = dom.GetObject(dom.GetObject(alObj).Channel());\n    object devObj = dom.GetObject(chObj.Device());\n    string strDate = serviceObj.Timestamp().Format(\"%s\");\n    if (isFirst) { isFirst = false; } else { WriteLine(\",\"); }\n    Write('{\"address\":\"' # devObj.Address() # '\", \"state\":\"' # state # '\", \"message\":\"' # err # '\", \"time\":\"' # strDate # '\"}');\n  }\n}\nWrite(\"]}\");";
+    std::string _getNamesScript = "string sDevId;\nstring sChnId;\nstring sDPId;\nWrite('{');\n    boolean dFirst = true;\n    Write('\"Devices\":[');\n    foreach (sDevId, root.Devices().EnumUsedIDs()) {\n    object oDevice   = dom.GetObject(sDevId);\n    boolean bDevReady = oDevice.ReadyConfig();\n    string sDevInterfaceId = oDevice.Interface();\n    string sDevInterface   = dom.GetObject(sDevInterfaceId).Name();\n    if (bDevReady) {\n        if (dFirst) {\n          dFirst = false;\n        } else {\n          WriteLine(',');\n        }\n        Write('{');\n        Write('\"ID\":\"' # oDevice.ID());\n        Write('\",\"Name\":\"' # oDevice.Name());\n        Write('\",\"TypeName\":\"' # oDevice.TypeName());\n        Write('\",\"HssType\":\"' # oDevice.HssType() # '\",\"Address\":\"' # oDevice.Address() # '\",\"Interface\":\"' # sDevInterface # '\"');\n        Write('}');\n    }\n}\nWrite(']}');";
+
+    std::mutex _serviceMessagesMutex;
+    std::vector<std::shared_ptr<CcuServiceMessage>> _serviceMessages;
+
     void newConnection(int32_t clientId, std::string address, uint16_t port);
+    void connectionClosed(int32_t clientId);
     void packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet);
     void processPacket(int32_t clientId, bool binaryRpc, std::string& methodName, BaseLib::PArray parameters);
     void listen(RpcType rpcType);
     void init();
     void deinit();
+    void reconnect(RpcType rpcType, bool forceReinit);
     void ping();
     bool regaReady();
+    void getCcuServiceMessages();
 };
 
 }
