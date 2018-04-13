@@ -994,11 +994,8 @@ void Ccu2::ping()
             }
             else
             {
-                if(_unreachable)
-                {
-                    _unreachable = false;
-                    _bl->globalServiceMessages.unset(MY_FAMILY_ID, 0, "CCU_UNREACHABLE." + _settings->serialNumber);
-                }
+                _unreachable = false;
+                _bl->globalServiceMessages.unset(MY_FAMILY_ID, 0, "CCU_UNREACHABLE." + _settings->serialNumber);
 
                 getCcuServiceMessages();
             }
