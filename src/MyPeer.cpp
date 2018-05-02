@@ -711,7 +711,8 @@ PVariable MyPeer::getParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channe
 	try
 	{
 		if(_disposing) return Variable::createError(-32500, "Peer is disposing.");
-		if(channel < 0) channel = 0;
+		if(channel == 0 && type == ParameterGroup::Type::Enum::config) channel = -1;
+        else if(channel < 0) channel = 0;
 		if(remoteChannel < 0) remoteChannel = 0;
 		Functions::iterator functionIterator = _rpcDevice->functions.find(channel);
 		if(functionIterator == _rpcDevice->functions.end()) return Variable::createError(-2, "Unknown channel");
@@ -731,7 +732,7 @@ PVariable MyPeer::getParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channe
 		{
 			PArray parameters = std::make_shared<Array>();
 			parameters->reserve(2);
-			parameters->push_back(std::make_shared<Variable>(_serialNumber + ":" + std::to_string(channel)));
+			parameters->push_back(std::make_shared<Variable>(_serialNumber + (channel == -1 ? "" : ":" + std::to_string(channel))));
 
 			if(type == ParameterGroup::Type::link)
 			{
@@ -747,6 +748,7 @@ PVariable MyPeer::getParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channe
 			else parameters->push_back(std::make_shared<Variable>(std::string("MASTER")));
 			return interface->invoke(_rpcType, "getParamset", parameters);
 		}
+
 	}
 	catch(const std::exception& ex)
 	{
