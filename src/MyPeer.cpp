@@ -781,9 +781,9 @@ PVariable MyPeer::putParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channe
         auto central = getCentral();
         if(!central) return Variable::createError(-32500, "Could not get central.");
 
+        bool parameterChanged = false;
 		if(type == ParameterGroup::Type::Enum::config)
-		{
-			bool parameterChanged = false;
+        {
 			for(Struct::iterator i = variables->structValue->begin(); i != variables->structValue->end(); ++i)
 			{
 				if(i->first.empty() || !i->second) continue;
@@ -800,8 +800,6 @@ PVariable MyPeer::putParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channe
 				parameterChanged = true;
 				GD::out.printInfo("Info: Parameter " + i->first + " of peer " + std::to_string(_peerID) + " and channel " + std::to_string(channel) + " was set to 0x" + BaseLib::HelperFunctions::getHexString(parameterData) + ".");
 			}
-
-			if(parameterChanged) raiseRPCUpdateDevice(_peerID, channel, _serialNumber + ":" + std::to_string(channel), 0);
 		}
 		else if(type == ParameterGroup::Type::Enum::variables)
 		{
@@ -826,7 +824,7 @@ PVariable MyPeer::putParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channe
         {
             PArray parameters = std::make_shared<Array>();
             parameters->reserve(3);
-            parameters->push_back(std::make_shared<Variable>(_serialNumber + ":" + std::to_string(channel)));
+            parameters->push_back(std::make_shared<Variable>(_serialNumber + (channel == 0 && type == ParameterGroup::Type::Enum::config ? "" : ":" + std::to_string(channel))));
 
             if(type == ParameterGroup::Type::link)
             {
@@ -841,7 +839,11 @@ PVariable MyPeer::putParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channe
             }
             else parameters->push_back(std::make_shared<Variable>(std::string("MASTER")));
             parameters->push_back(variables);
-            return interface->invoke(_rpcType, "putParamset", parameters);
+            auto result =  interface->invoke(_rpcType, "putParamset", parameters);
+
+            if(parameterChanged) raiseRPCUpdateDevice(_peerID, channel, _serialNumber + ":" + std::to_string(channel), 0);
+
+            return (result->type == BaseLib::VariableType::tString && result->stringValue.empty()) ? std::make_shared<BaseLib::Variable>() : result;
         }
 
         return std::make_shared<BaseLib::Variable>();
