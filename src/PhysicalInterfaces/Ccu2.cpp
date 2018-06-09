@@ -989,7 +989,7 @@ void Ccu2::ping()
                 if(!_unreachable)
                 {
                     _unreachable = true;
-                    _bl->globalServiceMessages.set(MY_FAMILY_ID, 0, BaseLib::HelperFunctions::getTimeSeconds(), "CCU_UNREACHABLE." + _settings->serialNumber, data);
+                    _bl->globalServiceMessages.set(MY_FAMILY_ID, 0, BaseLib::HelperFunctions::getTimeSeconds(), "CCU_UNREACHABLE." + _settings->serialNumber, data, 1);
                 }
             }
             else
