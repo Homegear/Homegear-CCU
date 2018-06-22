@@ -98,6 +98,9 @@ protected:
     Ccu2::RpcType _rpcType = Ccu2::RpcType::bidcos;
 	//End
 
+    std::atomic<int64_t> _lastValueUpdate;
+    std::atomic<int64_t> _lastConfigUpdate;
+
 	bool _shuttingDown = false;
 	std::shared_ptr<Ccu2> _physicalInterface;
 	uint32_t _lastRssiDevice = 0;
@@ -121,6 +124,11 @@ protected:
 	void sendPacket(PMyPacket packet, std::string responseId, int32_t delay);
 
 	// {{{ Hooks
+        /**
+         * {@inheritDoc}
+         */
+        virtual bool getAllConfigHook2(PRpcClientInfo clientInfo, PParameter parameter, uint32_t channel, PVariable parameters);
+
 		/**
 		 * {@inheritDoc}
 		 */

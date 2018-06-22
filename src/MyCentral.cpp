@@ -926,7 +926,10 @@ PVariable MyCentral::deleteDevice(BaseLib::PRpcClientInfo clientInfo, std::strin
 		std::shared_ptr<MyPeer> peer = getPeer(serialNumber);
 		if(!peer) return PVariable(new Variable(VariableType::tVoid));
 
-		return deleteDevice(clientInfo, peer->getID(), flags);
+        uint64_t peerId = peer->getID();
+        peer.reset();
+
+		return deleteDevice(clientInfo, peerId, flags);
 	}
 	catch(const std::exception& ex)
     {
@@ -963,6 +966,7 @@ PVariable MyCentral::deleteDevice(BaseLib::PRpcClientInfo clientInfo, uint64_t p
             auto result = interface->invoke(peer->getRpcType(), "deleteDevice", parameters);
             if(result->errorStruct) GD::out.printError("Error calling deleteDevice on CCU: " + result->structValue->at("faultString")->stringValue);
         }
+        peer.reset();
 
 		deletePeer(id);
 

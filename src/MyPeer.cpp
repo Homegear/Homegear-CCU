@@ -648,10 +648,49 @@ PParameterGroup MyPeer::getParameterSet(int32_t channel, ParameterGroup::Type::E
 	return PParameterGroup();
 }
 
+bool MyPeer::getAllConfigHook2(PRpcClientInfo clientInfo, PParameter parameter, uint32_t channel, PVariable parameters)
+{
+    try
+    {
+        if(BaseLib::HelperFunctions::getTime() - _lastConfigUpdate.load() > 60000)
+        {
+            for(auto& channel : _rpcDevice->functions)
+            {
+                getParamset(clientInfo, channel.first, BaseLib::DeviceDescription::ParameterGroup::Type::Enum::config, 0, -1, false);
+            }
+
+            _lastConfigUpdate.store(BaseLib::HelperFunctions::getTime());
+        }
+    }
+    catch(const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    return false;
+}
+
 bool MyPeer::getAllValuesHook2(PRpcClientInfo clientInfo, PParameter parameter, uint32_t channel, PVariable parameters)
 {
 	try
 	{
+        if(BaseLib::HelperFunctions::getTime() - _lastValueUpdate.load() > 60000)
+        {
+            for(auto& channel : _rpcDevice->functions)
+            {
+                getParamset(clientInfo, channel.first, BaseLib::DeviceDescription::ParameterGroup::Type::Enum::variables, 0, -1, false);
+            }
+
+            _lastValueUpdate.store(BaseLib::HelperFunctions::getTime());
+        }
+
 		if(channel == 1)
 		{
 			if(parameter->id == "PEER_ID")
@@ -744,8 +783,85 @@ PVariable MyPeer::getParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channe
 
 				parameters->push_back(std::make_shared<Variable>(remotePeer->getSerialNumber() + ":" + std::to_string(remoteChannel)));
 			}
-			else parameters->push_back(std::make_shared<Variable>(std::string("MASTER")));
-			return interface->invoke(_rpcType, "getParamset", parameters);
+			else if(type == ParameterGroup::Type::variables) parameters->push_back(std::make_shared<Variable>(std::string("VALUES")));
+            else parameters->push_back(std::make_shared<Variable>(std::string("MASTER")));
+			auto paramset = interface->invoke(_rpcType, "getParamset", parameters);
+
+            if(paramset->errorStruct) return paramset;
+
+            if(type == ParameterGroup::Type::variables)
+            {
+                auto channelIterator = valuesCentral.find(channel);
+                if(channelIterator != valuesCentral.end())
+                {
+                    for(auto& parameter : *paramset->structValue)
+                    {
+                        auto variableIterator = channelIterator->second.find(parameter.first);
+                        if(variableIterator == channelIterator->second.end()) continue;
+
+                        BaseLib::Systems::RpcConfigurationParameter& localParameter = variableIterator->second;
+                        if(!localParameter.rpcParameter) continue;
+
+                        std::vector<uint8_t> binaryValue;
+                        localParameter.rpcParameter->convertToPacket(parameter.second, binaryValue);
+                        localParameter.setBinaryData(binaryValue);
+                        if(localParameter.databaseId > 0) saveParameter(localParameter.databaseId, binaryValue);
+                        else saveParameter(0, ParameterGroup::Type::Enum::variables, channel, parameter.first, binaryValue);
+                    }
+                }
+            }
+            else if(type == ParameterGroup::Type::config)
+            {
+                auto channelIterator = configCentral.find(channel);
+                if(channelIterator != configCentral.end())
+                {
+                    for(auto& parameter : *paramset->structValue)
+                    {
+                        auto configIterator = channelIterator->second.find(parameter.first);
+                        if(configIterator == channelIterator->second.end()) continue;
+
+                        BaseLib::Systems::RpcConfigurationParameter& localParameter = configIterator->second;
+                        if(!localParameter.rpcParameter) continue;
+
+                        std::vector<uint8_t> binaryValue;
+                        localParameter.rpcParameter->convertToPacket(parameter.second, binaryValue);
+                        localParameter.setBinaryData(binaryValue);
+                        if(localParameter.databaseId > 0) saveParameter(localParameter.databaseId, binaryValue);
+                        else saveParameter(0, ParameterGroup::Type::Enum::config, channel, parameter.first, binaryValue);
+                    }
+                }
+            }
+            else if(type == ParameterGroup::Type::link)
+            {
+                auto channelIterator = linksCentral.find(channel);
+                if(channelIterator != linksCentral.end())
+                {
+                    auto remotePeerIterator = channelIterator->second.find(remoteID);
+					if(remotePeerIterator != channelIterator->second.end())
+					{
+						auto remoteChannelIterator = remotePeerIterator->second.find(remoteChannel);
+						if(remoteChannelIterator != remotePeerIterator->second.end())
+						{
+							for(auto& parameter : *paramset->structValue)
+							{
+								auto configIterator = remoteChannelIterator->second.find(parameter.first);
+								if(configIterator == remoteChannelIterator->second.end()) continue;
+
+								BaseLib::Systems::RpcConfigurationParameter& localParameter = configIterator->second;
+								if(!localParameter.rpcParameter) continue;
+
+								std::vector<uint8_t> binaryValue;
+								localParameter.rpcParameter->convertToPacket(parameter.second, binaryValue);
+								localParameter.setBinaryData(binaryValue);
+								if(localParameter.databaseId > 0) saveParameter(localParameter.databaseId, binaryValue);
+								else saveParameter(0, ParameterGroup::Type::Enum::config, channel, parameter.first, binaryValue, remoteID, remoteChannel);
+							}
+						}
+					}
+                }
+            }
+
+            return paramset;
 		}
 
 	}
