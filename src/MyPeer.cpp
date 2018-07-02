@@ -474,8 +474,10 @@ void MyPeer::setRssiDevice(uint8_t rssi)
 			std::shared_ptr<std::vector<PVariable>> rpcValues(new std::vector<PVariable>());
 			rpcValues->push_back(parameter.rpcParameter->convertFromPacket(parameterData));
 
-			raiseEvent(_peerID, 0, valueKeys, rpcValues);
-			raiseRPCEvent(_peerID, 0, _serialNumber + ":0", valueKeys, rpcValues);
+            std::string eventSource = "device-" + std::to_string(_peerID);
+            std::string address = _serialNumber + ":0";
+            raiseEvent(eventSource, _peerID, 0, valueKeys, rpcValues);
+            raiseRPCEvent(eventSource, _peerID, 0, address, valueKeys, rpcValues);
 		}
 	}
 	catch(const std::exception& ex)
@@ -528,13 +530,14 @@ void MyPeer::packetReceived(PMyPacket& packet)
 		valueKeys[channel]->push_back(variableName);
 		rpcValues[channel]->push_back(parameter.rpcParameter->convertFromPacket(binaryValue, true));
 
-		for(std::map<uint32_t, std::shared_ptr<std::vector<std::string>>>::const_iterator j = valueKeys.begin(); j != valueKeys.end(); ++j)
+		for(std::map<uint32_t, std::shared_ptr<std::vector<std::string>>>::iterator j = valueKeys.begin(); j != valueKeys.end(); ++j)
 		{
 			if(j->second->empty()) continue;
 
-			std::string address(_serialNumber + ":" + std::to_string(j->first));
-			raiseEvent(_peerID, j->first, j->second, rpcValues.at(j->first));
-			raiseRPCEvent(_peerID, j->first, address, j->second, rpcValues.at(j->first));
+            std::string eventSource = "device-" + std::to_string(_peerID);
+            std::string address(_serialNumber + ":" + std::to_string(j->first));
+            raiseEvent(eventSource, _peerID, j->first, j->second, rpcValues.at(j->first));
+            raiseRPCEvent(eventSource, _peerID, j->first, address, j->second, rpcValues.at(j->first));
 		}
 	}
 	catch(const std::exception& ex)
@@ -1034,8 +1037,9 @@ PVariable MyPeer::setValue(BaseLib::PRpcClientInfo clientInfo, uint32_t channel,
 			else saveParameter(0, ParameterGroup::Type::Enum::variables, channel, valueKey, parameterData);
 			if(!valueKeys->empty())
 			{
-				raiseEvent(_peerID, channel, valueKeys, values);
-				raiseRPCEvent(_peerID, channel, _serialNumber + ":" + std::to_string(channel), valueKeys, values);
+                std::string address(_serialNumber + ":" + std::to_string(channel));
+                raiseEvent(clientInfo->initInterfaceId, _peerID, channel, valueKeys, values);
+                raiseRPCEvent(clientInfo->initInterfaceId, _peerID, channel, address, valueKeys, values);
 			}
 			return PVariable(new Variable(VariableType::tVoid));
 		}
@@ -1069,8 +1073,9 @@ PVariable MyPeer::setValue(BaseLib::PRpcClientInfo clientInfo, uint32_t channel,
 
 		if(!valueKeys->empty())
 		{
-			raiseEvent(_peerID, channel, valueKeys, values);
-			raiseRPCEvent(_peerID, channel, _serialNumber + ":" + std::to_string(channel), valueKeys, values);
+            std::string address(_serialNumber + ":" + std::to_string(channel));
+            raiseEvent(clientInfo->initInterfaceId, _peerID, channel, valueKeys, values);
+            raiseRPCEvent(clientInfo->initInterfaceId, _peerID, channel, address, valueKeys, values);
 		}
 
 		return PVariable(new Variable(VariableType::tVoid));
