@@ -269,6 +269,7 @@ void Interfaces::create()
     {
         for(auto settings : _physicalInterfaceSettings)
         {
+            if(settings.second->host.empty()) continue;
             addInterface(settings.second, false);
         }
         if(!_defaultPhysicalInterface)
