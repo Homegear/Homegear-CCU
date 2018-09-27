@@ -8,6 +8,11 @@ override_dh_auto_install:
 	chmod 755 $(CURDIR)/debian/homegear-ccu2/etc/homegear/families
 	chmod 644 $(CURDIR)/debian/homegear-ccu2/etc/homegear/families/*
 
+	mkdir -p $(CURDIR)/debian/homegear-ccu2/var/lib/homegear/admin-ui/translations/modules/ccu2
+	cp -R $(CURDIR)/misc/UI\ Translations/* $(CURDIR)/debian/homegear-ccu2/var/lib/homegear/admin-ui/translations/modules/ccu2
+	chown -R root:root $(CURDIR)/debian/homegear-ccu2/var/lib/homegear/admin-ui/translations/modules/ccu2
+	chmod -R 555 $(CURDIR)/debian/homegear-ccu2/var/lib/homegear/admin-ui/translations/modules/ccu2
+
 override_dh_strip:
 	dh_strip
 

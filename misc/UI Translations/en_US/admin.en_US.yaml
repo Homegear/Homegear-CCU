@@ -1,0 +1,14 @@
+---
+# {{{ Pairing info
+l10n.ccu2.pairingInfo.id: 'ID'
+l10n.ccu2.pairingInfo.serialNumber: 'Serial number'
+l10n.ccu2.pairingInfo.hostname: 'Hostname'
+l10n.ccu2.pairingInfo.sgtin: 'SGTIN'
+l10n.ccu2.pairingInfo.sgtinHelp: "The SGTIN as printed on the device's package"
+l10n.ccu2.pairingInfo.key: 'Key'
+l10n.ccu2.pairingInfo.keyHelp: "The key as printed on the sticker shipped with your device"
+# }}}
+
+# {{{ Service messages
+l10n.ccu2.serviceMessage.ccuUnreachable: 'The CCU with serial number %variable0% and IP %variable1% is unreachable.'
+# }}}

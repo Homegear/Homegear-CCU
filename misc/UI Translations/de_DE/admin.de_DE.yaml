@@ -1,0 +1,14 @@
+---
+# {{{ Pairing info
+l10n.ccu2.pairingInfo.id: 'ID'
+l10n.ccu2.pairingInfo.serialNumber: 'Seriennummer'
+l10n.ccu2.pairingInfo.hostname: 'Hostname'
+l10n.ccu2.pairingInfo.sgtin: 'SGTIN'
+l10n.ccu2.pairingInfo.sgtinHelp: "Die SGTIN ist auf der Verpackung des Gerätes abgedruckt."
+l10n.ccu2.pairingInfo.key: 'Key'
+l10n.ccu2.pairingInfo.keyHelp: "Der Schlüssel findet sich auf einem Aufkleber, welcher mit Ihrem Gerät ausgeliefert wurde."
+# }}}
+
+# {{{ Service messages
+l10n.ccu2.serviceMessage.ccuUnreachable: 'Die CCU mit Seriennummer %variable0% und IP %variable1% ist nicht erreichbar.'
+# }}}
