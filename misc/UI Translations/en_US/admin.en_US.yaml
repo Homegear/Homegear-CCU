@@ -2,7 +2,7 @@
 # {{{ Pairing info
 l10n.ccu2.pairingInfo.id: 'ID'
 l10n.ccu2.pairingInfo.serialNumber: 'Serial number'
-l10n.ccu2.pairingInfo.hostname: 'Hostname'
+l10n.ccu2.pairingInfo.hostname: 'IP-Address'
 l10n.ccu2.pairingInfo.sgtin: 'SGTIN'
 l10n.ccu2.pairingInfo.sgtinHelp: "The SGTIN as printed on the device's package"
 l10n.ccu2.pairingInfo.key: 'Key'
