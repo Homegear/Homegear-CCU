@@ -32,9 +32,6 @@
 
 #include <homegear-base/Systems/IPhysicalInterface.h>
 #include <homegear-base/Sockets/TcpSocket.h>
-#include <homegear-base/Encoding/RpcEncoder.h>
-#include <homegear-base/Encoding/RpcDecoder.h>
-#include <homegear-base/Encoding/BinaryRpc.h>
 #include <homegear-base/Encoding/XmlrpcDecoder.h>
 #include <homegear-base/Encoding/XmlrpcEncoder.h>
 #include <homegear-base/Encoding/Http.h>
@@ -85,7 +82,6 @@ public:
 private:
     struct CcuClientInfo
     {
-        std::shared_ptr<BaseLib::Rpc::BinaryRpc> binaryRpc;
         std::shared_ptr<BaseLib::Http> http;
     };
 
@@ -109,8 +105,6 @@ private:
     std::unique_ptr<BaseLib::TcpSocket> _hmipClient;
     std::unique_ptr<BaseLib::TcpSocket> _wiredClient;
     std::unique_ptr<BaseLib::HttpClient> _httpClient;
-    std::unique_ptr<BaseLib::Rpc::RpcEncoder> _rpcEncoder;
-    std::unique_ptr<BaseLib::Rpc::RpcDecoder> _rpcDecoder;
     RpcType _connectedRpcType = RpcType::bidcos;
     std::atomic_bool _unreachable;
     std::atomic_bool _forceReInit;
@@ -149,7 +143,7 @@ private:
     void newConnection(int32_t clientId, std::string address, uint16_t port);
     void connectionClosed(int32_t clientId);
     void packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet);
-    void processPacket(int32_t clientId, bool binaryRpc, std::string& methodName, BaseLib::PArray parameters);
+    void processPacket(int32_t clientId, std::string& methodName, BaseLib::PArray parameters);
     void listen(RpcType rpcType);
     void init();
     void deinit();

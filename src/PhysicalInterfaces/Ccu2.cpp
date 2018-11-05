@@ -42,8 +42,6 @@ Ccu2::Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings
         settings->listenThreadPolicy = SCHED_OTHER;
     }
 
-    _rpcDecoder.reset(new BaseLib::Rpc::RpcDecoder(GD::bl, true, true));
-    _rpcEncoder.reset(new BaseLib::Rpc::RpcEncoder(GD::bl, false, false));
     _xmlrpcDecoder.reset(new BaseLib::Rpc::XmlrpcDecoder(GD::bl));
     _xmlrpcEncoder.reset(new BaseLib::Rpc::XmlrpcEncoder(GD::bl));
 
@@ -207,7 +205,7 @@ void Ccu2::init()
                 {
                     auto parameters = std::make_shared<BaseLib::Array>();
                     parameters->reserve(2);
-                    parameters->push_back(std::make_shared<BaseLib::Variable>("binary://" + _listenIp + ":" + std::to_string(_listenPort)));
+                    parameters->push_back(std::make_shared<BaseLib::Variable>("http://" + _listenIp + ":" + std::to_string(_listenPort)));
                     parameters->push_back(std::make_shared<BaseLib::Variable>(_bidcosIdString));
                     auto result = invoke(RpcType::bidcos, "init", parameters);
                     if(result->errorStruct)
@@ -342,7 +340,7 @@ void Ccu2::deinit()
     {
         BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
         parameters->reserve(2);
-        parameters->push_back(std::make_shared<BaseLib::Variable>("binary://" + _listenIp + ":" + std::to_string(_listenPort)));
+        parameters->push_back(std::make_shared<BaseLib::Variable>("http://" + _listenIp + ":" + std::to_string(_listenPort)));
         parameters->push_back(std::make_shared<BaseLib::Variable>(std::string("")));
         if(_bidcosClient && _bidcosClient->connected())
         {
@@ -592,7 +590,6 @@ void Ccu2::newConnection(int32_t clientId, std::string address, uint16_t port)
     {
         if(GD::bl->debugLevel >= 5) _out.printDebug("Debug: New connection from " + address + " on port " + std::to_string(port) + ". Client ID is: " + std::to_string(clientId));
         CcuClientInfo clientInfo;
-        clientInfo.binaryRpc = std::make_shared<BaseLib::Rpc::BinaryRpc>(_bl);
         clientInfo.http = std::make_shared<BaseLib::Http>();
 
         std::lock_guard<std::mutex> ccuClientInfoGuard(_ccuClientInfoMutex);
@@ -637,7 +634,6 @@ void Ccu2::connectionClosed(int32_t clientId)
 
 void Ccu2::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet)
 {
-    std::shared_ptr<BaseLib::Rpc::BinaryRpc> binaryRpc;
     std::shared_ptr<BaseLib::Http> http;
 
     try
@@ -652,58 +648,33 @@ void Ccu2::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet
                 _out.printError("Error: Client with ID " + std::to_string(clientId) + " not found in map.");
                 return;
             }
-            binaryRpc = clientIterator->second.binaryRpc;
             http = clientIterator->second.http;
         }
 
         if(packet.empty()) return;
-        bool isBinaryRpc = binaryRpc->processingStarted();
         uint32_t processedBytes = 0;
         try
         {
             while(processedBytes < packet.size())
             {
-                if(!isBinaryRpc && !binaryRpc->processingStarted() && !http->headerProcessingStarted())
-                {
-                    isBinaryRpc = packet.size() - processedBytes < 3 ? (char)(*(packet.data() + processedBytes)) == 'B' : !strncmp((char*)(packet.data() + processedBytes), "Bin", 3);
-                }
-
                 std::string methodName;
                 BaseLib::PArray parameters;
 
-                if(isBinaryRpc)
+                processedBytes += http->process((char*)packet.data() + processedBytes, packet.size() - processedBytes);
+                if(http->isFinished())
                 {
-                    processedBytes += binaryRpc->process((char*)packet.data() + processedBytes, packet.size() - processedBytes);
-                    if(binaryRpc->isFinished())
+                    if(http->getHeader().method == "POST")
                     {
-                        if(binaryRpc->getType() == BaseLib::Rpc::BinaryRpc::Type::request)
-                        {
-                            parameters = _rpcDecoder->decodeRequest(binaryRpc->getData(), methodName);
-                            processPacket(clientId, true, methodName, parameters);
-                        }
-                        isBinaryRpc = false;
-                        binaryRpc->reset();
+                        parameters = _xmlrpcDecoder->decodeRequest(http->getContent(), methodName);
+                        processPacket(clientId, methodName, parameters);
                     }
-                }
-                else
-                {
-                    processedBytes += http->process((char*)packet.data() + processedBytes, packet.size() - processedBytes);
-                    if(http->isFinished())
-                    {
-                        if(http->getHeader().method == "POST")
-                        {
-                            parameters = _xmlrpcDecoder->decodeRequest(http->getContent(), methodName);
-                            processPacket(clientId, false, methodName, parameters);
-                        }
-                        http->reset();
-                    }
+                    http->reset();
                 }
             }
         }
         catch(BaseLib::Rpc::BinaryRpcException& ex)
         {
             _out.printError("Error processing packet (1): " + ex.what());
-            binaryRpc->reset();
         }
         return;
     }
@@ -720,11 +691,10 @@ void Ccu2::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet
         _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
 
-    binaryRpc->reset();
     http->reset();
 }
 
-void Ccu2::processPacket(int32_t clientId, bool binaryRpc, std::string& methodName, BaseLib::PArray parameters)
+void Ccu2::processPacket(int32_t clientId, std::string& methodName, BaseLib::PArray parameters)
 {
     try
     {
@@ -774,12 +744,7 @@ void Ccu2::processPacket(int32_t clientId, bool binaryRpc, std::string& methodNa
         }
         else if(methodName == "newDevices")
         {
-            if(!binaryRpc)
-            {
-                parameters->at(0)->integerValue = (int32_t) RpcType::hmip;
-                _hmipNewDevicesCalled = true;
-            }
-            else if(parameters->at(0)->stringValue == _bidcosIdString)
+            if(parameters->at(0)->stringValue == _bidcosIdString)
             {
                 parameters->at(0)->integerValue = (int32_t) RpcType::bidcos;
                 _bidcosDevicesExist = parameters->at(1)->arrayValue->size() > 52;
@@ -789,15 +754,20 @@ void Ccu2::processPacket(int32_t clientId, bool binaryRpc, std::string& methodNa
                 parameters->at(0)->integerValue = (int32_t)RpcType::wired;
                 _wiredNewDevicesCalled = true;
             }
+            else
+            {
+                parameters->at(0)->integerValue = (int32_t) RpcType::hmip;
+                _hmipNewDevicesCalled = true;
+            }
             _out.printInfo("Info: CCU (" + std::to_string(parameters->at(0)->integerValue) + ") is calling RPC method " + methodName);
             PMyPacket packet = std::make_shared<MyPacket>(methodName, parameters);
             raisePacketReceived(packet);
         }
         else if(methodName == "system.listMethods" || methodName == "listDevices")
         {
-            if(!binaryRpc) parameters->at(0)->integerValue = (int32_t)RpcType::hmip;
-            else if(parameters->at(0)->stringValue == _bidcosIdString) parameters->at(0)->integerValue = (int32_t) RpcType::bidcos;
+            if(parameters->at(0)->stringValue == _bidcosIdString) parameters->at(0)->integerValue = (int32_t) RpcType::bidcos;
             else if(parameters->at(0)->stringValue == _wiredIdString) parameters->at(0)->integerValue = (int32_t)RpcType::wired;
+            else parameters->at(0)->integerValue = (int32_t)RpcType::hmip;
             _out.printInfo("Info: CCU (" + std::to_string(parameters->at(0)->integerValue) + ") is calling RPC method " + methodName);
             response->setType(BaseLib::VariableType::tArray);
         }
@@ -815,21 +785,13 @@ void Ccu2::processPacket(int32_t clientId, bool binaryRpc, std::string& methodNa
         }
 
         BaseLib::TcpSocket::TcpPacket responsePacket;
-        if(binaryRpc)
-        {
-            _rpcEncoder->encodeResponse(response, responsePacket);
-            _server->sendToClient(clientId, responsePacket, true);
-        }
-        else
-        {
-            std::vector<uint8_t> xmlData;
-            _xmlrpcEncoder->encodeResponse(response, xmlData);
-            std::string header = "HTTP/1.1 200 OK\r\nConnection: Close\r\nContent-Type: text/xml\r\nContent-Length: " + std::to_string(xmlData.size()) + "\r\n\r\n";
-            responsePacket.reserve(header.size() + xmlData.size());
-            responsePacket.insert(responsePacket.end(), header.begin(), header.end());
-            responsePacket.insert(responsePacket.end(), xmlData.begin(), xmlData.end());
-            _server->sendToClient(clientId, responsePacket, true);
-        }
+        std::vector<uint8_t> xmlData;
+        _xmlrpcEncoder->encodeResponse(response, xmlData);
+        std::string header = "HTTP/1.1 200 OK\r\nConnection: Close\r\nContent-Type: text/xml\r\nContent-Length: " + std::to_string(xmlData.size()) + "\r\n\r\n";
+        responsePacket.reserve(header.size() + xmlData.size());
+        responsePacket.insert(responsePacket.end(), header.begin(), header.end());
+        responsePacket.insert(responsePacket.end(), xmlData.begin(), xmlData.end());
+        _server->sendToClient(clientId, responsePacket, true);
     }
     catch(const std::exception& ex)
     {
@@ -888,38 +850,17 @@ void Ccu2::listen(Ccu2::RpcType rpcType)
                     processedBytes = 0;
                     while(processedBytes < bytesRead)
                     {
-                        if(rpcType == RpcType::bidcos || rpcType == RpcType::wired)
+                        processedBytes += http.process(buffer.data() + processedBytes, bytesRead - processedBytes, true);
+                        if(http.isFinished())
                         {
-                            processedBytes += binaryRpc.process(buffer.data() + processedBytes, bytesRead - processedBytes);
-                            if(binaryRpc.isFinished())
+                            std::unique_lock<std::mutex> waitLock(_requestWaitMutex);
                             {
-                                if(binaryRpc.getType() == BaseLib::Rpc::BinaryRpc::Type::response)
-                                {
-                                    std::unique_lock<std::mutex> waitLock(_requestWaitMutex);
-                                    {
-                                        std::lock_guard<std::mutex> responseGuard(_responseMutex);
-                                        _response = _rpcDecoder->decodeResponse(binaryRpc.getData());
-                                    }
-                                    waitLock.unlock();
-                                    _requestConditionVariable.notify_all();
-                                }
-                                binaryRpc.reset();
+                                std::lock_guard<std::mutex> responseGuard(_responseMutex);
+                                _response = _xmlrpcDecoder->decodeResponse(http.getContent());
                             }
-                        }
-                        else if(rpcType == RpcType::hmip)
-                        {
-                            processedBytes += http.process(buffer.data() + processedBytes, bytesRead - processedBytes, true);
-                            if(http.isFinished())
-                            {
-                                std::unique_lock<std::mutex> waitLock(_requestWaitMutex);
-                                {
-                                    std::lock_guard<std::mutex> responseGuard(_responseMutex);
-                                    _response = _xmlrpcDecoder->decodeResponse(http.getContent());
-                                }
-                                waitLock.unlock();
-                                _requestConditionVariable.notify_all();
-                                http.reset();
-                            }
+                            waitLock.unlock();
+                            _requestConditionVariable.notify_all();
+                            http.reset();
                         }
                     }
                 }
@@ -1139,18 +1080,14 @@ BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, B
         std::lock_guard<std::mutex> invokeGuard(_invokeMutex);
 
         std::vector<char> data;
-        if(rpcType == RpcType::bidcos || rpcType == RpcType::wired) _rpcEncoder->encodeRequest(methodName, parameters, data);
-        else if(rpcType == RpcType::hmip)
-        {
-            std::vector<char> xmlData;
-            _xmlrpcEncoder->encodeRequest(methodName, parameters, xmlData);
-            xmlData.push_back('\r');
-            xmlData.push_back('\n');
-            std::string header = "POST / HTTP/1.1\r\nUser-Agent: homegear-ccu\r\nHost: " + _ipAddress + ":" + std::to_string(_port2) + "\r\nContent-Type: text/xml\r\nContent-Length: " + std::to_string(xmlData.size()) + "\r\nConnection: Keep-Alive\r\n\r\n";
-            data.reserve(header.size() + xmlData.size());
-            data.insert(data.end(), header.begin(), header.end());
-            data.insert(data.end(), xmlData.begin(), xmlData.end());
-        }
+        std::vector<char> xmlData;
+        _xmlrpcEncoder->encodeRequest(methodName, parameters, xmlData);
+        xmlData.push_back('\r');
+        xmlData.push_back('\n');
+        std::string header = "POST / HTTP/1.1\r\nUser-Agent: homegear-ccu\r\nHost: " + _ipAddress + ":" + std::to_string(_port2) + "\r\nContent-Type: text/xml\r\nContent-Length: " + std::to_string(xmlData.size()) + "\r\nConnection: Keep-Alive\r\n\r\n";
+        data.reserve(header.size() + xmlData.size());
+        data.insert(data.end(), header.begin(), header.end());
+        data.insert(data.end(), xmlData.begin(), xmlData.end());
 
         if(wait)
         {
