@@ -1251,7 +1251,7 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
                         if(pos)
                         {
                             std::string device(buffer + 5, pos - (buffer + 5));
-                            if(device == "eQ3-HM-CCU2-App")
+                            if(device == "eQ3-HM-CCU2-App" || device == "eQ3-HmIP-CCU3-App")
                             {
                                 pos = (char*)memchr(buffer + 5 + device.size() + 1, 0, bytesReceived - 5 - device.size() - 1);
                                 if(pos)
@@ -1310,6 +1310,7 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
                                     }
                                 }
                             }
+                            else GD::out.printInfo("Info: Ignoring unknown device: " + device);
                         }
                     }
                 }

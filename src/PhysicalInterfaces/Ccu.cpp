@@ -853,6 +853,7 @@ void Ccu::listen(Ccu::RpcType rpcType)
                         processedBytes += http.process(buffer.data() + processedBytes, bytesRead - processedBytes, true);
                         if(http.isFinished())
                         {
+                            if(GD::bl->debugLevel >= 5) GD::out.printDebug("Debug: Raw response: " + std::string(http.getContent().data(), http.getContentSize()));
                             std::unique_lock<std::mutex> waitLock(_requestWaitMutex);
                             {
                                 std::lock_guard<std::mutex> responseGuard(_responseMutex);
@@ -1097,6 +1098,8 @@ BaseLib::PVariable Ccu::invoke(Ccu::RpcType rpcType, std::string methodName, Bas
 
         try
         {
+            if(GD::bl->debugLevel >= 5) GD::out.printDebug("Debug: Sending (" + std::to_string((int)rpcType) + ") " + std::string(data.begin(), data.end()));
+
             if(rpcType == RpcType::bidcos) _bidcosClient->proofwrite(data);
             else if(rpcType == RpcType::hmip) _hmipClient->proofwrite(data);
             else if(rpcType == RpcType::wired) _wiredClient->proofwrite(data);
