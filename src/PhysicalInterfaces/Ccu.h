@@ -27,8 +27,8 @@
  * files in the program, then also delete it here.
  */
 
-#ifndef HOMEGEAR_CCU2_CCU2_H
-#define HOMEGEAR_CCU2_CCU2_H
+#ifndef HOMEGEAR_CCU_CCU_H
+#define HOMEGEAR_CCU_CCU_H
 
 #include <homegear-base/Systems/IPhysicalInterface.h>
 #include <homegear-base/Sockets/TcpSocket.h>
@@ -40,7 +40,7 @@
 namespace MyFamily
 {
 
-class Ccu2 : public BaseLib::Systems::IPhysicalInterface
+class Ccu : public BaseLib::Systems::IPhysicalInterface
 {
 public:
     enum class RpcType : int32_t
@@ -58,8 +58,8 @@ public:
         int32_t time = 0;
     };
 
-    Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings);
-    virtual ~Ccu2();
+    Ccu(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings);
+    virtual ~Ccu();
 
     std::string getSerialNumber() { return _settings->serialNumber; }
     std::string getPort1() { return _settings->port; }

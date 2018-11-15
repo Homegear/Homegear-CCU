@@ -31,7 +31,7 @@
 #define INTERFACES_H_
 
 #include <homegear-base/BaseLib.h>
-#include "PhysicalInterfaces/Ccu2.h"
+#include "PhysicalInterfaces/Ccu.h"
 
 namespace MyFamily
 {
@@ -46,15 +46,15 @@ public:
 
     void addEventHandlers(BaseLib::Systems::IPhysicalInterface::IPhysicalInterfaceEventSink* central);
     void removeEventHandlers();
-    std::shared_ptr<Ccu2> addInterface(Systems::PPhysicalInterfaceSettings settings, bool storeInDatabase);
+    std::shared_ptr<Ccu> addInterface(Systems::PPhysicalInterfaceSettings settings, bool storeInDatabase);
     void removeUnknownInterfaces(std::set<std::string>& knownInterfaces);
-    std::shared_ptr<Ccu2> getDefaultInterface();
-    std::shared_ptr<Ccu2> getInterface(std::string& name);
-    std::shared_ptr<Ccu2> getInterfaceByIp(std::string& ipAddress);
-	std::shared_ptr<Ccu2> getInterfaceBySerial(std::string& serial);
-    std::vector<std::shared_ptr<Ccu2>> getInterfaces();
+    std::shared_ptr<Ccu> getDefaultInterface();
+    std::shared_ptr<Ccu> getInterface(std::string& name);
+    std::shared_ptr<Ccu> getInterfaceByIp(std::string& ipAddress);
+	std::shared_ptr<Ccu> getInterfaceBySerial(std::string& serial);
+    std::vector<std::shared_ptr<Ccu>> getInterfaces();
 protected:
-    std::shared_ptr<Ccu2> _defaultPhysicalInterface;
+    std::shared_ptr<Ccu> _defaultPhysicalInterface;
     std::map<std::string, PEventHandler> _physicalInterfaceEventhandlers;
 
 	virtual void create();

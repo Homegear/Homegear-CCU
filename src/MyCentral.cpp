@@ -185,7 +185,7 @@ void MyCentral::loadPeers()
 		for(BaseLib::Database::DataTable::iterator row = rows->begin(); row != rows->end(); ++row)
 		{
 			int32_t peerID = row->second.at(0)->intValue;
-			GD::out.printMessage("Loading CCU2 peer " + std::to_string(peerID));
+			GD::out.printMessage("Loading CCU peer " + std::to_string(peerID));
 			std::shared_ptr<MyPeer> peer(new MyPeer(peerID, row->second.at(2)->intValue, row->second.at(3)->textValue, _deviceId, this));
 			if(!peer->load(this)) continue;
 			if(!peer->getRpcDevice()) continue;
@@ -291,7 +291,7 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
                     std::string name;
                     auto deviceNameIterator = deviceNames.find(serialNumber);
                     if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
-                    pairDevice((Ccu2::RpcType)parameters->at(0)->integerValue, senderId, serialNumber, name);
+                    pairDevice((Ccu::RpcType)parameters->at(0)->integerValue, senderId, serialNumber, name);
                 }
                 return true;
             }
@@ -326,7 +326,7 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
     return false;
 }
 
-void MyCentral::pairDevice(Ccu2::RpcType rpcType, std::string& interfaceId, std::string& serialNumber, std::string& name)
+void MyCentral::pairDevice(Ccu::RpcType rpcType, std::string& interfaceId, std::string& serialNumber, std::string& name)
 {
     try
     {
@@ -431,7 +431,7 @@ void MyCentral::savePeers(bool full)
 		std::lock_guard<std::mutex> peersGuard(_peersMutex);
 		for(std::map<uint64_t, std::shared_ptr<BaseLib::Systems::Peer>>::iterator i = _peersById.begin(); i != _peersById.end(); ++i)
 		{
-			GD::out.printInfo("Info: Saving CCU2 peer " + std::to_string(i->second->getID()));
+			GD::out.printInfo("Info: Saving CCU peer " + std::to_string(i->second->getID()));
 			i->second->save(full, full, full);
 		}
 	}
@@ -489,7 +489,7 @@ void MyCentral::deletePeer(uint64_t id)
 
 		peer->deleteFromDatabase();
 
-		GD::out.printMessage("Removed CCU2 peer " + std::to_string(peer->getID()));
+		GD::out.printMessage("Removed CCU peer " + std::to_string(peer->getID()));
 	}
 	catch(const std::exception& ex)
     {
@@ -1007,7 +1007,7 @@ void MyCentral::searchDevicesThread()
 
             if(interface->hasBidCos())
             {
-                auto result = interface->invoke(Ccu2::RpcType::bidcos, methodName, parameters);
+                auto result = interface->invoke(Ccu::RpcType::bidcos, methodName, parameters);
                 if(result->errorStruct)
                 {
                     GD::out.printWarning("Warning: Error calling listDevices for HomeMatic BidCoS on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
@@ -1025,14 +1025,14 @@ void MyCentral::searchDevicesThread()
                         std::string name;
                         auto deviceNameIterator = deviceNames.find(serialNumber);
                         if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
-                        pairDevice(Ccu2::RpcType::bidcos, interfaceId, serialNumber, name);
+                        pairDevice(Ccu::RpcType::bidcos, interfaceId, serialNumber, name);
                     }
                 }
             }
 
             if(interface->hasHmip())
             {
-                auto result = interface->invoke(Ccu2::RpcType::hmip, methodName, parameters);
+                auto result = interface->invoke(Ccu::RpcType::hmip, methodName, parameters);
                 if(result->errorStruct)
                 {
                     GD::out.printWarning("Warning: Error calling listDevices for HomeMatic IP on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
@@ -1050,7 +1050,7 @@ void MyCentral::searchDevicesThread()
                         std::string name;
                         auto deviceNameIterator = deviceNames.find(serialNumber);
                         if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
-                        pairDevice(Ccu2::RpcType::hmip, interfaceId, serialNumber, name);
+                        pairDevice(Ccu::RpcType::hmip, interfaceId, serialNumber, name);
                     }
                 }
             }
@@ -1058,7 +1058,7 @@ void MyCentral::searchDevicesThread()
             if(interface->hasWired())
             {
                 methodName = "searchDevices";
-                auto result = interface->invoke(Ccu2::RpcType::wired, methodName, parameters);
+                auto result = interface->invoke(Ccu::RpcType::wired, methodName, parameters);
                 if(result->errorStruct)
                 {
                     GD::out.printWarning("Warning: Error calling searchDevices for HomeMatic Wired on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
@@ -1066,7 +1066,7 @@ void MyCentral::searchDevicesThread()
                 else
                 {
                     methodName = "listDevices";
-                    result = interface->invoke(Ccu2::RpcType::wired, methodName, parameters);
+                    result = interface->invoke(Ccu::RpcType::wired, methodName, parameters);
                     if(result->errorStruct)
                     {
                         GD::out.printWarning("Warning: Error calling listDevices for HomeMatic Wired on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
@@ -1084,7 +1084,7 @@ void MyCentral::searchDevicesThread()
                             std::string name;
                             auto deviceNameIterator = deviceNames.find(serialNumber);
                             if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
-                            pairDevice(Ccu2::RpcType::wired, interfaceId, serialNumber, name);
+                            pairDevice(Ccu::RpcType::wired, interfaceId, serialNumber, name);
                         }
                     }
                 }
@@ -1288,7 +1288,7 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
                                         }
                                         else if(addNewInterfaces)
                                         {
-                                            settings->type = "ccu2-auto";
+                                            settings->type = "ccu-auto";
                                             settings->host = senderIp;
                                             settings->serialNumber = serial;
                                             settings->port = "2001";
@@ -1300,10 +1300,10 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
 										{
 											foundInterfaces.emplace(serial);
 
-											std::shared_ptr<Ccu2> newInterface = GD::interfaces->addInterface(settings, true);
+											std::shared_ptr<Ccu> newInterface = GD::interfaces->addInterface(settings, true);
 											if(newInterface)
 											{
-												GD::out.printInfo("Info: Found new CCU2 with IP address " + senderIp + " and serial number " + settings->id + ".");
+												GD::out.printInfo("Info: Found new CCU with IP address " + senderIp + " and serial number " + settings->id + ".");
 												newInterface->startListening();
 											}
 										}
@@ -1399,20 +1399,20 @@ std::shared_ptr<Variable> MyCentral::setInstallMode(BaseLib::PRpcClientInfo clie
         std::string sgtin;
         std::string key;
 
-        Ccu2::RpcType rpcType = Ccu2::RpcType::bidcos;
+        Ccu::RpcType rpcType = Ccu::RpcType::bidcos;
         if(metadata)
         {
             auto metadataIterator = metadata->structValue->find("interface");
             if(metadataIterator != metadata->structValue->end()) ccu = metadataIterator->second->stringValue;
             metadataIterator = metadata->structValue->find("type");
-            if(metadataIterator != metadata->structValue->end() && metadataIterator->second->stringValue == "hmip") rpcType = Ccu2::RpcType::hmip;
+            if(metadataIterator != metadata->structValue->end() && metadataIterator->second->stringValue == "hmip") rpcType = Ccu::RpcType::hmip;
             metadataIterator = metadata->structValue->find("sgtin");
             if(metadataIterator != metadata->structValue->end()) sgtin = metadataIterator->second->stringValue;
             metadataIterator = metadata->structValue->find("key");
             if(metadataIterator != metadata->structValue->end()) key = metadataIterator->second->stringValue;
         }
 
-        std::shared_ptr<Ccu2> interface;
+        std::shared_ptr<Ccu> interface;
         if(!ccu.empty()) interface = GD::interfaces->getInterface(ccu);
         if(!interface) interface = GD::interfaces->getDefaultInterface();
         if(interface)
@@ -1424,7 +1424,7 @@ std::shared_ptr<Variable> MyCentral::setInstallMode(BaseLib::PRpcClientInfo clie
                 parameters->reserve(3);
                 parameters->push_back(std::make_shared<Variable>(on));
                 parameters->push_back(std::make_shared<Variable>(duration));
-                if(rpcType == Ccu2::RpcType::bidcos) parameters->push_back(std::make_shared<Variable>(1));
+                if(rpcType == Ccu::RpcType::bidcos) parameters->push_back(std::make_shared<Variable>(1));
                 auto result = interface->invoke(rpcType, methodName, parameters);
                 if(result->errorStruct)
                 {

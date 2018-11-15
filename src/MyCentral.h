@@ -92,7 +92,7 @@ protected:
 	void deletePeer(uint64_t id);
 
     void pairingModeTimer(int32_t duration, bool debugOutput = true);
-    void pairDevice(Ccu2::RpcType rpcType, std::string& interfaceId, std::string& serialNumber, std::string& name);
+    void pairDevice(Ccu::RpcType rpcType, std::string& interfaceId, std::string& serialNumber, std::string& name);
 	void searchDevicesThread();
 };
 

@@ -96,15 +96,15 @@ void Interfaces::removeEventHandlers()
     }
 }
 
-std::vector<std::shared_ptr<Ccu2>> Interfaces::getInterfaces()
+std::vector<std::shared_ptr<Ccu>> Interfaces::getInterfaces()
 {
-    std::vector<std::shared_ptr<Ccu2>> interfaces;
+    std::vector<std::shared_ptr<Ccu>> interfaces;
     try
     {
         std::lock_guard<std::mutex> interfaceGuard(_physicalInterfacesMutex);
         for(auto interfaceBase : _physicalInterfaces)
         {
-            std::shared_ptr<Ccu2> interface(std::dynamic_pointer_cast<Ccu2>(interfaceBase.second));
+            std::shared_ptr<Ccu> interface(std::dynamic_pointer_cast<Ccu>(interfaceBase.second));
             if(!interface) continue;
             if(interface->isOpen()) interfaces.push_back(interface);
         }
@@ -124,43 +124,43 @@ std::vector<std::shared_ptr<Ccu2>> Interfaces::getInterfaces()
     return interfaces;
 }
 
-std::shared_ptr<Ccu2> Interfaces::getDefaultInterface()
+std::shared_ptr<Ccu> Interfaces::getDefaultInterface()
 {
     std::lock_guard<std::mutex> interfaceGuard(_physicalInterfacesMutex);
     return _defaultPhysicalInterface;
 }
 
-std::shared_ptr<Ccu2> Interfaces::getInterface(std::string& name)
+std::shared_ptr<Ccu> Interfaces::getInterface(std::string& name)
 {
     std::lock_guard<std::mutex> interfaceGuard(_physicalInterfacesMutex);
     auto interfaceBase = _physicalInterfaces.find(name);
-    if(interfaceBase == _physicalInterfaces.end()) return std::shared_ptr<Ccu2>();
-    std::shared_ptr<Ccu2> interface(std::dynamic_pointer_cast<Ccu2>(interfaceBase->second));
+    if(interfaceBase == _physicalInterfaces.end()) return std::shared_ptr<Ccu>();
+    std::shared_ptr<Ccu> interface(std::dynamic_pointer_cast<Ccu>(interfaceBase->second));
     return interface;
 }
 
-std::shared_ptr<Ccu2> Interfaces::getInterfaceByIp(std::string& ipAddress)
+std::shared_ptr<Ccu> Interfaces::getInterfaceByIp(std::string& ipAddress)
 {
     std::lock_guard<std::mutex> interfaceGuard(_physicalInterfacesMutex);
     for(auto interfaceBase : _physicalInterfaces)
     {
-        std::shared_ptr<Ccu2> interface(std::dynamic_pointer_cast<Ccu2>(interfaceBase.second));
+        std::shared_ptr<Ccu> interface(std::dynamic_pointer_cast<Ccu>(interfaceBase.second));
         if(!interface) continue;
         if(interface->getHostname() == ipAddress) return interface;
     }
-    return std::shared_ptr<Ccu2>();
+    return std::shared_ptr<Ccu>();
 }
 
-std::shared_ptr<Ccu2> Interfaces::getInterfaceBySerial(std::string& serial)
+std::shared_ptr<Ccu> Interfaces::getInterfaceBySerial(std::string& serial)
 {
     std::lock_guard<std::mutex> interfaceGuard(_physicalInterfacesMutex);
     for(auto interfaceBase : _physicalInterfaces)
     {
-        std::shared_ptr<Ccu2> interface(std::dynamic_pointer_cast<Ccu2>(interfaceBase.second));
+        std::shared_ptr<Ccu> interface(std::dynamic_pointer_cast<Ccu>(interfaceBase.second));
         if(!interface) continue;
         if(interface->getSerialNumber() == serial) return interface;
     }
-    return std::shared_ptr<Ccu2>();
+    return std::shared_ptr<Ccu>();
 }
 
 void Interfaces::removeUnknownInterfaces(std::set<std::string>& knownInterfaces)
@@ -171,11 +171,11 @@ void Interfaces::removeUnknownInterfaces(std::set<std::string>& knownInterfaces)
         std::lock_guard<std::mutex> interfaceGuard(_physicalInterfacesMutex);
         for(auto interfaceBase : _physicalInterfaces)
         {
-            std::shared_ptr<Ccu2> interface(std::dynamic_pointer_cast<Ccu2>(interfaceBase.second));
+            std::shared_ptr<Ccu> interface(std::dynamic_pointer_cast<Ccu>(interfaceBase.second));
             if(!interface) continue;
-            if(interface->getType() != "ccu2-auto" || knownInterfaces.find(interfaceBase.first) != knownInterfaces.end() || interface->isOpen()) continue;
+            if((interface->getType() != "ccu2-auto" && interface->getType() != "ccu-auto") || knownInterfaces.find(interfaceBase.first) != knownInterfaces.end() || interface->isOpen()) continue;
             {
-                GD::out.printInfo("Removing CCU2 with serial number " + interfaceBase.first + " and IP address " + interface->getHostname() + ".");
+                GD::out.printInfo("Removing CCU with serial number " + interfaceBase.first + " and IP address " + interface->getHostname() + ".");
                 std::string name = interfaceBase.first + ".devicetype";
                 GD::family->deleteFamilySettingFromDatabase(name);
                 name = interfaceBase.first + ".host";
@@ -212,24 +212,24 @@ void Interfaces::removeUnknownInterfaces(std::set<std::string>& knownInterfaces)
     }
 }
 
-std::shared_ptr<Ccu2> Interfaces::addInterface(Systems::PPhysicalInterfaceSettings settings, bool storeInDatabase)
+std::shared_ptr<Ccu> Interfaces::addInterface(Systems::PPhysicalInterfaceSettings settings, bool storeInDatabase)
 {
     try
     {
-        std::shared_ptr<Ccu2> device;
+        std::shared_ptr<Ccu> device;
         if(!settings || settings->type.empty()) return device;
         GD::out.printDebug("Debug: Creating physical device. Type is: " + settings->type);
 
-        if(settings->type == "ccu2" || settings->type == "ccu2-auto")
+        if(settings->type == "ccu2" || settings->type == "ccu" || settings->type == "ccu2-auto" || settings->type == "ccu-auto")
         {
-            device = std::make_shared<Ccu2>(settings);
+            device = std::make_shared<Ccu>(settings);
         }
         else GD::out.printError("Error: Unsupported physical device type: " + settings->type);
         if(device)
         {
             std::lock_guard<std::mutex> interfaceGuard(_physicalInterfacesMutex);
             _physicalInterfaces[settings->id] = device;
-            if(settings->isDefault || !_defaultPhysicalInterface || _defaultPhysicalInterface->getType() == "ccu2-temp") _defaultPhysicalInterface = device;
+            if(settings->isDefault || !_defaultPhysicalInterface || _defaultPhysicalInterface->getType() == "ccu-temp" || _defaultPhysicalInterface->getType() == "ccu2-temp") _defaultPhysicalInterface = device;
             if(storeInDatabase)
             {
                 std::string name = settings->id + ".devicetype";
@@ -260,7 +260,7 @@ std::shared_ptr<Ccu2> Interfaces::addInterface(Systems::PPhysicalInterfaceSettin
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
-    return std::shared_ptr<Ccu2>();
+    return std::shared_ptr<Ccu>();
 }
 
 void Interfaces::create()
@@ -275,8 +275,8 @@ void Interfaces::create()
         if(!_defaultPhysicalInterface)
         {
             Systems::PPhysicalInterfaceSettings settings = std::make_shared<Systems::PhysicalInterfaceSettings>();
-            settings->type = "ccu2-temp";
-            _defaultPhysicalInterface = std::make_shared<Ccu2>(settings);
+            settings->type = "ccu-temp";
+            _defaultPhysicalInterface = std::make_shared<Ccu>(settings);
         }
     }
     catch(const std::exception& ex)

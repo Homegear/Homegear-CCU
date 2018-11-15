@@ -27,14 +27,14 @@
  * files in the program, then also delete it here.
  */
 
-#include "Ccu2.h"
+#include "Ccu.h"
 #include "../GD.h"
 #include "../MyPacket.h"
 
 namespace MyFamily
 {
 
-Ccu2::Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings) : IPhysicalInterface(GD::bl, GD::family->getFamily(), settings)
+Ccu::Ccu(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings) : IPhysicalInterface(GD::bl, GD::family->getFamily(), settings)
 {
     if(settings->listenThreadPriority == -1)
     {
@@ -84,7 +84,7 @@ Ccu2::Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings
     _httpClient = std::unique_ptr<BaseLib::HttpClient>(new HttpClient(_bl, _hostname, 8181, false, false));
 }
 
-Ccu2::~Ccu2()
+Ccu::~Ccu()
 {
     _stopCallbackThread = true;
     _stopped = true;
@@ -96,7 +96,7 @@ Ccu2::~Ccu2()
     GD::bl->threadManager.join(_pingThread);
 }
 
-void Ccu2::reconnect(RpcType rpcType, bool forceReinit)
+void Ccu::reconnect(RpcType rpcType, bool forceReinit)
 {
     try
     {
@@ -161,7 +161,7 @@ void Ccu2::reconnect(RpcType rpcType, bool forceReinit)
     }
 }
 
-void Ccu2::init()
+void Ccu::init()
 {
     try
     {
@@ -334,7 +334,7 @@ void Ccu2::init()
     }
 }
 
-void Ccu2::deinit()
+void Ccu::deinit()
 {
     try
     {
@@ -380,7 +380,7 @@ void Ccu2::deinit()
     }
 }
 
-void Ccu2::startListening()
+void Ccu::startListening()
 {
     try
     {
@@ -402,9 +402,9 @@ void Ccu2::startListening()
             _wiredReInit = false;
 
             BaseLib::TcpSocket::TcpServerInfo serverInfo;
-            serverInfo.newConnectionCallback = std::bind(&Ccu2::newConnection, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
-            serverInfo.connectionClosedCallback = std::bind(&Ccu2::connectionClosed, this, std::placeholders::_1);
-            serverInfo.packetReceivedCallback = std::bind(&Ccu2::packetReceived, this, std::placeholders::_1, std::placeholders::_2);
+            serverInfo.newConnectionCallback = std::bind(&Ccu::newConnection, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+            serverInfo.connectionClosedCallback = std::bind(&Ccu::connectionClosed, this, std::placeholders::_1);
+            serverInfo.packetReceivedCallback = std::bind(&Ccu::packetReceived, this, std::placeholders::_1, std::placeholders::_2);
 
             std::string settingName = "eventServerPortRange";
             auto setting = GD::family->getFamilySetting(settingName);
@@ -506,28 +506,28 @@ void Ccu2::startListening()
 
             if(_bidcosClient && _port != 0)
             {
-                if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::bidcos);
-                else _bl->threadManager.start(_listenThread, true, &Ccu2::listen, this, RpcType::bidcos);
+                if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu::listen, this, RpcType::bidcos);
+                else _bl->threadManager.start(_listenThread, true, &Ccu::listen, this, RpcType::bidcos);
             }
 
             if(_hmipClient && _port2 != 0)
             {
                 if(!_bidcosClient) _connectedRpcType = RpcType::hmip;
 
-                if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread2, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::hmip);
-                else _bl->threadManager.start(_listenThread2, true, &Ccu2::listen, this, RpcType::hmip);
+                if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread2, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu::listen, this, RpcType::hmip);
+                else _bl->threadManager.start(_listenThread2, true, &Ccu::listen, this, RpcType::hmip);
             }
 
             if(_wiredClient && _port3 != 0)
             {
                 if(!_bidcosClient && _connectedRpcType == RpcType::bidcos) _connectedRpcType = RpcType::wired;
 
-                if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread3, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::wired);
-                else _bl->threadManager.start(_listenThread3, true, &Ccu2::listen, this, RpcType::wired);
+                if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread3, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu::listen, this, RpcType::wired);
+                else _bl->threadManager.start(_listenThread3, true, &Ccu::listen, this, RpcType::wired);
             }
 
             _stopPingThread = false;
-            _bl->threadManager.start(_pingThread, true, &Ccu2::ping, this);
+            _bl->threadManager.start(_pingThread, true, &Ccu::ping, this);
         }
         IPhysicalInterface::startListening();
     }
@@ -545,7 +545,7 @@ void Ccu2::startListening()
     }
 }
 
-void Ccu2::stopListening()
+void Ccu::stopListening()
 {
     try
     {
@@ -584,7 +584,7 @@ void Ccu2::stopListening()
     }
 }
 
-void Ccu2::newConnection(int32_t clientId, std::string address, uint16_t port)
+void Ccu::newConnection(int32_t clientId, std::string address, uint16_t port)
 {
     try
     {
@@ -609,7 +609,7 @@ void Ccu2::newConnection(int32_t clientId, std::string address, uint16_t port)
     }
 }
 
-void Ccu2::connectionClosed(int32_t clientId)
+void Ccu::connectionClosed(int32_t clientId)
 {
     try
     {
@@ -632,7 +632,7 @@ void Ccu2::connectionClosed(int32_t clientId)
     }
 }
 
-void Ccu2::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet)
+void Ccu::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet)
 {
     std::shared_ptr<BaseLib::Http> http;
 
@@ -694,7 +694,7 @@ void Ccu2::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet
     http->reset();
 }
 
-void Ccu2::processPacket(int32_t clientId, std::string& methodName, BaseLib::PArray parameters)
+void Ccu::processPacket(int32_t clientId, std::string& methodName, BaseLib::PArray parameters)
 {
     try
     {
@@ -807,7 +807,7 @@ void Ccu2::processPacket(int32_t clientId, std::string& methodName, BaseLib::PAr
     }
 }
 
-void Ccu2::listen(Ccu2::RpcType rpcType)
+void Ccu::listen(Ccu::RpcType rpcType)
 {
     try
     {
@@ -820,7 +820,7 @@ void Ccu2::listen(Ccu2::RpcType rpcType)
         if(rpcType == _connectedRpcType)
         {
             //Only start threads once
-            _bl->threadManager.start(_initThread, true, &Ccu2::init, this);
+            _bl->threadManager.start(_initThread, true, &Ccu::init, this);
         }
 
         while(!_stopped && !_stopCallbackThread)
@@ -905,7 +905,7 @@ void Ccu2::listen(Ccu2::RpcType rpcType)
     }
 }
 
-void Ccu2::ping()
+void Ccu::ping()
 {
     try
     {
@@ -930,13 +930,13 @@ void Ccu2::ping()
                 if(!_unreachable)
                 {
                     _unreachable = true;
-                    _bl->globalServiceMessages.set(MY_FAMILY_ID, 0, _settings->id, BaseLib::HelperFunctions::getTimeSeconds(), "l10n.ccu2.serviceMessage.ccuUnreachable", std::list<std::string>{ _settings->serialNumber, _ipAddress }, data, 1);
+                    _bl->globalServiceMessages.set(MY_FAMILY_ID, 0, _settings->id, BaseLib::HelperFunctions::getTimeSeconds(), "l10n.ccu.serviceMessage.ccuUnreachable", std::list<std::string>{ _settings->serialNumber, _ipAddress }, data, 1);
                 }
             }
             else
             {
                 _unreachable = false;
-                _bl->globalServiceMessages.unset(MY_FAMILY_ID, 0, _settings->id, "l10n.ccu2.serviceMessage.ccuUnreachable");
+                _bl->globalServiceMessages.unset(MY_FAMILY_ID, 0, _settings->id, "l10n.ccu.serviceMessage.ccuUnreachable");
 
                 getCcuServiceMessages();
             }
@@ -998,8 +998,8 @@ void Ccu2::ping()
 
                 if(_bidcosClient)
                 {
-                    if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread2, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::bidcos);
-                    else _bl->threadManager.start(_listenThread2, true, &Ccu2::listen, this, RpcType::bidcos);
+                    if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread2, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu::listen, this, RpcType::bidcos);
+                    else _bl->threadManager.start(_listenThread2, true, &Ccu::listen, this, RpcType::bidcos);
                 }
             }
 
@@ -1019,8 +1019,8 @@ void Ccu2::ping()
                 {
                     if(!_bidcosClient) _connectedRpcType = RpcType::hmip;
 
-                    if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread2, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::hmip);
-                    else _bl->threadManager.start(_listenThread2, true, &Ccu2::listen, this, RpcType::hmip);
+                    if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread2, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu::listen, this, RpcType::hmip);
+                    else _bl->threadManager.start(_listenThread2, true, &Ccu::listen, this, RpcType::hmip);
                 }
             }
 
@@ -1040,8 +1040,8 @@ void Ccu2::ping()
                 {
                     if(!_bidcosClient && _connectedRpcType == RpcType::bidcos) _connectedRpcType = RpcType::wired;
 
-                    if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread3, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::wired);
-                    else _bl->threadManager.start(_listenThread3, true, &Ccu2::listen, this, RpcType::wired);
+                    if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread3, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu::listen, this, RpcType::wired);
+                    else _bl->threadManager.start(_listenThread3, true, &Ccu::listen, this, RpcType::wired);
                 }
             }
 
@@ -1068,11 +1068,11 @@ void Ccu2::ping()
     }
 }
 
-BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, BaseLib::PArray parameters, bool wait)
+BaseLib::PVariable Ccu::invoke(Ccu::RpcType rpcType, std::string methodName, BaseLib::PArray parameters, bool wait)
 {
     try
     {
-        if(_stopped) return BaseLib::Variable::createError(-32500, "CCU2 is stopped.");
+        if(_stopped) return BaseLib::Variable::createError(-32500, "CCU is stopped.");
         if(rpcType == RpcType::bidcos && !_bidcosClient) return BaseLib::Variable::createError(-32501, "HomeMatic BidCoS is disabled.");
         else if(rpcType == RpcType::hmip && !_hmipClient) return BaseLib::Variable::createError(-32501, "HomeMatic IP is disabled.");
         else if(rpcType == RpcType::wired && !_wiredClient) return BaseLib::Variable::createError(-32501, "HomeMatic Wired is disabled.");
@@ -1141,7 +1141,7 @@ BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, B
     }
 }
 
-bool Ccu2::regaReady()
+bool Ccu::regaReady()
 {
     try
     {
@@ -1173,7 +1173,7 @@ bool Ccu2::regaReady()
     return false;
 }
 
-std::unordered_map<std::string, std::string> Ccu2::getNames()
+std::unordered_map<std::string, std::string> Ccu::getNames()
 {
     std::unordered_map<std::string, std::string> deviceNames;
     try
@@ -1210,7 +1210,7 @@ std::unordered_map<std::string, std::string> Ccu2::getNames()
     return deviceNames;
 }
 
-void Ccu2::getCcuServiceMessages()
+void Ccu::getCcuServiceMessages()
 {
     try
     {

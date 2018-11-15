@@ -324,7 +324,7 @@ void MyPeer::setPhysicalInterfaceId(std::string id)
 	}
 }
 
-void MyPeer::setPhysicalInterface(std::shared_ptr<Ccu2> interface)
+void MyPeer::setPhysicalInterface(std::shared_ptr<Ccu> interface)
 {
 	try
 	{
@@ -367,7 +367,7 @@ void MyPeer::loadVariables(BaseLib::Systems::ICentral* central, std::shared_ptr<
                     break;
                 }
                 case 20:
-                    _rpcType = (Ccu2::RpcType)row->second.at(3)->intValue;
+                    _rpcType = (Ccu::RpcType)row->second.at(3)->intValue;
                     break;
 			}
 		}
