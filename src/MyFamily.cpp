@@ -81,7 +81,7 @@ void MyFamily::createCentral()
 {
 	try
 	{
-		_central.reset(new MyCentral(0, "VCCU20000001", this));
+		_central.reset(new MyCentral(0, "VCCU00000001", this));
 		GD::out.printMessage("Created central with id " + std::to_string(_central->getId()) + ".");
 	}
 	catch(const std::exception& ex)
@@ -136,14 +136,14 @@ PVariable MyFamily::getPairingInfo()
                 typeSelectorIp->structValue->emplace("fieldsOptional", std::make_shared<BaseLib::Variable>(true));
                 PVariable typeSelectorIpFields = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
                 PVariable typeSelectorIpSgtin = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
-                typeSelectorIpSgtin->structValue->emplace("name", std::make_shared<BaseLib::Variable>(std::string("l10n.ccu2.pairingInfo.sgtin")));
-                typeSelectorIpSgtin->structValue->emplace("description", std::make_shared<BaseLib::Variable>(std::string("l10n.ccu2.pairingInfo.sgtinHelp")));
+                typeSelectorIpSgtin->structValue->emplace("name", std::make_shared<BaseLib::Variable>(std::string("l10n.ccu.pairingInfo.sgtin")));
+                typeSelectorIpSgtin->structValue->emplace("description", std::make_shared<BaseLib::Variable>(std::string("l10n.ccu.pairingInfo.sgtinHelp")));
                 typeSelectorIpSgtin->structValue->emplace("pos", std::make_shared<BaseLib::Variable>(0));
                 typeSelectorIpSgtin->structValue->emplace("type", std::make_shared<BaseLib::Variable>(std::string("string")));
                 typeSelectorIpFields->structValue->emplace("sgtin", typeSelectorIpSgtin);
                 PVariable typeSelectorIpKey = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
-                typeSelectorIpKey->structValue->emplace("name", std::make_shared<BaseLib::Variable>(std::string("l10n.ccu2.pairingInfo.key")));
-                typeSelectorIpKey->structValue->emplace("description", std::make_shared<BaseLib::Variable>(std::string("l10n.ccu2.pairingInfo.keyHelp")));
+                typeSelectorIpKey->structValue->emplace("name", std::make_shared<BaseLib::Variable>(std::string("l10n.ccu.pairingInfo.key")));
+                typeSelectorIpKey->structValue->emplace("description", std::make_shared<BaseLib::Variable>(std::string("l10n.ccu.pairingInfo.keyHelp")));
                 typeSelectorIpKey->structValue->emplace("pos", std::make_shared<BaseLib::Variable>(1));
                 typeSelectorIpKey->structValue->emplace("type", std::make_shared<BaseLib::Variable>(std::string("string")));
                 typeSelectorIpFields->structValue->emplace("key", typeSelectorIpKey);
@@ -162,24 +162,24 @@ PVariable MyFamily::getPairingInfo()
             PVariable interfaces = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
 
             PVariable interface = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
-            interface->structValue->emplace("name", std::make_shared<BaseLib::Variable>(std::string("CCU2")));
+            interface->structValue->emplace("name", std::make_shared<BaseLib::Variable>(std::string("CCU")));
             interface->structValue->emplace("ipDevice", std::make_shared<BaseLib::Variable>(true));
 
             PVariable field = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
             field->structValue->emplace("pos", std::make_shared<BaseLib::Variable>(0));
-            field->structValue->emplace("label", std::make_shared<BaseLib::Variable>(std::string("l10n.ccu2.pairingInfo.id")));
+            field->structValue->emplace("label", std::make_shared<BaseLib::Variable>(std::string("l10n.ccu.pairingInfo.id")));
             field->structValue->emplace("type", std::make_shared<BaseLib::Variable>(std::string("string")));
             interface->structValue->emplace("id", field);
 
             field = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
             field->structValue->emplace("pos", std::make_shared<BaseLib::Variable>(1));
-            field->structValue->emplace("label", std::make_shared<BaseLib::Variable>(std::string("l10n.ccu2.pairingInfo.serialNumber")));
+            field->structValue->emplace("label", std::make_shared<BaseLib::Variable>(std::string("l10n.ccu.pairingInfo.serialNumber")));
             field->structValue->emplace("type", std::make_shared<BaseLib::Variable>(std::string("string")));
             interface->structValue->emplace("serialnumber", field);
 
             field = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
             field->structValue->emplace("pos", std::make_shared<BaseLib::Variable>(2));
-            field->structValue->emplace("label", std::make_shared<BaseLib::Variable>(std::string("l10n.ccu2.pairingInfo.hostname")));
+            field->structValue->emplace("label", std::make_shared<BaseLib::Variable>(std::string("l10n.ccu.pairingInfo.hostname")));
             field->structValue->emplace("type", std::make_shared<BaseLib::Variable>(std::string("string")));
             interface->structValue->emplace("host", field);
 
@@ -198,7 +198,7 @@ PVariable MyFamily::getPairingInfo()
             field->structValue->emplace("const", std::make_shared<BaseLib::Variable>(std::string("2000")));
             interface->structValue->emplace("port3", field);
 
-            interfaces->structValue->emplace("ccu2", interface);
+            interfaces->structValue->emplace("ccu", interface);
 
             info->structValue->emplace("interfaces", interfaces);
         //}}}

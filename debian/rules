@@ -3,15 +3,15 @@
 override_dh_auto_install:
 	dh_auto_install
 
-	mkdir -p $(CURDIR)/debian/homegear-ccu2/etc/homegear/families
-	cp -R $(CURDIR)/misc/Config\ Directory/* $(CURDIR)/debian/homegear-ccu2/etc/homegear/families
-	chmod 755 $(CURDIR)/debian/homegear-ccu2/etc/homegear/families
-	chmod 644 $(CURDIR)/debian/homegear-ccu2/etc/homegear/families/*
+	mkdir -p $(CURDIR)/debian/homegear-ccu/etc/homegear/families
+	cp -R $(CURDIR)/misc/Config\ Directory/* $(CURDIR)/debian/homegear-ccu/etc/homegear/families
+	chmod 755 $(CURDIR)/debian/homegear-ccu/etc/homegear/families
+	chmod 644 $(CURDIR)/debian/homegear-ccu/etc/homegear/families/*
 
-	mkdir -p $(CURDIR)/debian/homegear-ccu2/var/lib/homegear/admin-ui/translations/modules/ccu2
-	cp -R $(CURDIR)/misc/UI\ Translations/* $(CURDIR)/debian/homegear-ccu2/var/lib/homegear/admin-ui/translations/modules/ccu2
-	chown -R root:root $(CURDIR)/debian/homegear-ccu2/var/lib/homegear/admin-ui/translations/modules/ccu2
-	chmod -R 555 $(CURDIR)/debian/homegear-ccu2/var/lib/homegear/admin-ui/translations/modules/ccu2
+	mkdir -p $(CURDIR)/debian/homegear-ccu/var/lib/homegear/admin-ui/translations/modules/ccu
+	cp -R $(CURDIR)/misc/UI\ Translations/* $(CURDIR)/debian/homegear-ccu/var/lib/homegear/admin-ui/translations/modules/ccu
+	chown -R root:root $(CURDIR)/debian/homegear-ccu/var/lib/homegear/admin-ui/translations/modules/ccu
+	chmod -R 555 $(CURDIR)/debian/homegear-ccu/var/lib/homegear/admin-ui/translations/modules/ccu
 
 override_dh_strip:
 	dh_strip

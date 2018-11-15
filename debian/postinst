@@ -4,15 +4,17 @@ case $1 in
 	# Configure this package. If the package must prompt the user for
 	# information, do it here.
 	configure)
+		rm -f /var/lib/homegear/modules/mod_ccu2.so
+		mv /etc/homegear/families/ccu2.conf /etc/homegear/families/ccu.conf > /dev/null 2>&1
 		chown -R homegear:homegear /var/lib/homegear/modules
 		chmod -R 550 /var/lib/homegear/modules
 		homegear -e mls > /dev/null 2>&1
 		if [ $? -eq 0 ]; then
-			homegear -e mld mod_ccu2.so
+			homegear -e mld mod_ccu.so
 		fi
 		echo "##########################################################################"
 		echo "##########################################################################"
-		echo "### Please modify the file /etc/homegear/families/ccu2.conf            ###"
+		echo "### Please modify the file /etc/homegear/families/ccu.conf            ###"
 		echo "### according to your needs and restart Homegear.                      ###"
 		echo "##########################################################################"
 		echo "##########################################################################"
