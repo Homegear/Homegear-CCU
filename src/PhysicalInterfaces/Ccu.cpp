@@ -198,6 +198,7 @@ void Ccu::init()
                         _wiredReInit.store(true, std::memory_order_release);
                     }
                 }
+                else _wiredReInit.store(false, std::memory_order_release);
             }
             catch(const std::exception& ex)
             {
@@ -718,9 +719,7 @@ void Ccu::ping()
 
             if(_ipAddress.empty())
             {
-                if(_bidcosClient) _ipAddress = _bidcosClient->getIpAddress();
-                else if(_hmipClient) _ipAddress = _hmipClient->getIpAddress();
-                else if(_wiredClient) _ipAddress = _wiredClient->getIpAddress();
+                _ipAddress = BaseLib::Net::resolveHostname(_hostname);
                 _noHost = _hostname.empty();
             }
         }
