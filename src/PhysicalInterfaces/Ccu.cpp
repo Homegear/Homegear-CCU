@@ -186,7 +186,7 @@ void Ccu::init()
                 auto result = invoke(RpcType::wired, "init", parameters);
                 if(result->errorStruct)
                 {
-                    if(result->structValue->at("faultCode")->integerValue == 400)
+                    if(result->structValue->at("faultCode")->integerValue == 400 || result->structValue->at("faultCode")->integerValue == 503)
                     {
                         _out.printInfo("Info: HomeMatic Wired is not enabled on CCU.");
                         _wiredReInit.store(false, std::memory_order_release);
@@ -692,7 +692,7 @@ void Ccu::ping()
                 else _bidcosReInit = true;
             }
 
-            if(_wiredClient && ((_wiredNewDevicesCalled && BaseLib::HelperFunctions::getTime() - _lastPongWired.load() > 3600000) || _wiredReInit))
+            if(_wiredClient && !_wiredDisabled && ((_wiredNewDevicesCalled && BaseLib::HelperFunctions::getTime() - _lastPongWired.load() > 3600000) || _wiredReInit))
             {
                 if(regaReady())
                 {
