@@ -1016,8 +1016,6 @@ void MyCentral::searchDevicesThread()
                 }
                 else
                 {
-                    GD::out.printInfo("Moin2");
-                    //result->print(true);
                     for(auto& description : *result->arrayValue)
                     {
                         auto addressIterator = description->structValue->find("ADDRESS");
