@@ -1000,6 +1000,8 @@ void MyCentral::searchDevicesThread()
         auto interfaces = GD::interfaces->getInterfaces();
         for(auto& interface : interfaces)
         {
+        	GD::out.printInfo("Info: Searching for devices on CCU with serial number " + interface->getSerialNumber());
+
             auto deviceNames = interface->getNames();
 
             std::string methodName("listDevices");
@@ -1014,6 +1016,8 @@ void MyCentral::searchDevicesThread()
                 }
                 else
                 {
+                    GD::out.printInfo("Moin2");
+                    //result->print(true);
                     for(auto& description : *result->arrayValue)
                     {
                         auto addressIterator = description->structValue->find("ADDRESS");
