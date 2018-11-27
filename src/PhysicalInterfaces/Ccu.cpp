@@ -194,7 +194,7 @@ void Ccu::init()
                     }
                     else
                     {
-                        _out.printError("Error calling \"init\" for HomeMatic Wired: " + result->structValue->at("faultString")->stringValue);
+                        _out.printError("Error calling \"init\" for HomeMatic Wired (" + std::to_string(result->structValue->at("faultCode")->integerValue64) + "): " + result->structValue->at("faultString")->stringValue);
                         _wiredReInit.store(true, std::memory_order_release);
                     }
                 }
@@ -241,13 +241,13 @@ void Ccu::deinit()
         parameters->reserve(2);
         parameters->push_back(std::make_shared<BaseLib::Variable>("http://" + _listenIp + ":" + std::to_string(_listenPort)));
         parameters->push_back(std::make_shared<BaseLib::Variable>(std::string("")));
-        if(_bidcosClient && _bidcosClient->connected())
+        if(_bidcosClient)
         {
             auto result = invoke(RpcType::bidcos, "init", parameters);
             if(result->errorStruct) _out.printError("Error calling (de-)\"init\" for HomeMatic BidCoS: " + result->structValue->at("faultString")->stringValue);
         }
 
-        if(_hmipClient && _hmipClient->connected())
+        if(_hmipClient)
         {
             parameters->at(0)->stringValue = "http://" + _listenIp + ":" + std::to_string(_listenPort);
             parameters->at(1)->stringValue = "";
@@ -255,7 +255,7 @@ void Ccu::deinit()
             if(result->errorStruct) _out.printError("Error calling (de-)\"init\" for HomeMatic IP: " + result->structValue->at("faultString")->stringValue);
         }
 
-        if(_wiredClient && _wiredClient->connected())
+        if(_wiredClient && !_wiredDisabled)
         {
             parameters->at(0)->stringValue = "http://" + _listenIp + ":" + std::to_string(_listenPort);
             parameters->at(1)->stringValue = "";
@@ -745,7 +745,7 @@ BaseLib::PVariable Ccu::invoke(Ccu::RpcType rpcType, std::string methodName, Bas
         if(_stopped) return BaseLib::Variable::createError(-32500, "CCU is stopped.");
         if(rpcType == RpcType::bidcos && !_bidcosClient) return BaseLib::Variable::createError(-32501, "HomeMatic BidCoS is disabled.");
         else if(rpcType == RpcType::hmip && !_hmipClient) return BaseLib::Variable::createError(-32501, "HomeMatic IP is disabled.");
-        else if(rpcType == RpcType::wired && !_wiredClient) return BaseLib::Variable::createError(-32501, "HomeMatic Wired is disabled.");
+        else if(rpcType == RpcType::wired && (!_wiredClient || _wiredDisabled)) return BaseLib::Variable::createError(-32501, "HomeMatic Wired is disabled.");
 
         std::lock_guard<std::mutex> invokeGuard(_invokeMutex);
 
@@ -770,24 +770,20 @@ BaseLib::PVariable Ccu::invoke(Ccu::RpcType rpcType, std::string methodName, Bas
 
             if(GD::bl->debugLevel >= 5) GD::out.printDebug("Debug: Response was (" + std::to_string((int)rpcType) + ") " + std::string(httpResponse.getContent().data(), httpResponse.getContentSize()));
         }
-        catch(BaseLib::HttpClientException& ex)
+        catch(BaseLib::Exception& ex)
         {
-            return BaseLib::Variable::createError(-1, ex.what());
-        }
-        catch(SocketOperationException& ex)
-        {
-            _out.printError("Error: Could not write to socket: " + ex.what());
-            return BaseLib::Variable::createError(-1, ex.what());
+            if(rpcType == RpcType::wired && methodName == "init") return BaseLib::Variable::createError(400, "Bad Request");
+            else return BaseLib::Variable::createError(-1, ex.what());
         }
 
         if(httpResponse.getHeader().responseCode == 400 || httpResponse.getHeader().responseCode == 503) return BaseLib::Variable::createError(400, "Bad Request");
         else return _xmlrpcDecoder->decodeResponse(httpResponse.getContent());
     }
-    catch(const std::exception& ex)
+    catch(BaseLib::Exception& ex)
     {
         return BaseLib::Variable::createError(-32500, ex.what());
     }
-    catch(BaseLib::Exception& ex)
+    catch(const std::exception& ex)
     {
         return BaseLib::Variable::createError(-32500, ex.what());
     }
