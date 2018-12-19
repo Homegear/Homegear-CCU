@@ -797,7 +797,6 @@ bool Ccu::regaReady()
 {
     try
     {
-        return true;
         HttpClient client(_bl, _hostname, 80, false);
         std::string path = "/ise/checkrega.cgi";
         std::string response;
@@ -867,7 +866,6 @@ void Ccu::getCcuServiceMessages()
 {
     try
     {
-        return;
         BaseLib::Ansi ansi(true, false);
         std::string regaResponse;
         _httpClient->post("/tclrega.exe", _getServiceMessagesScript, regaResponse);
