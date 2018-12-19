@@ -867,7 +867,6 @@ void Ccu::getCcuServiceMessages()
 {
     try
     {
-        return;
         BaseLib::Ansi ansi(true, false);
         std::string regaResponse;
         _httpClient->post("/tclrega.exe", _getServiceMessagesScript, regaResponse);
