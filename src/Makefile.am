@@ -5,8 +5,8 @@ AM_LDFLAGS = -Wl,-rpath=/lib/homegear -Wl,-rpath=/usr/lib/homegear -Wl,-rpath=/u
 LIBS += -Wl,-Bdynamic
 
 libdir = $(localstatedir)/lib/homegear/modules
-lib_LTLIBRARIES = mod_ccu2.la
-mod_ccu2_la_SOURCES = DescriptionCreator.cpp MyFamily.cpp MyPacket.cpp MyPeer.cpp Factory.cpp GD.cpp MyCentral.cpp Interfaces.cpp PhysicalInterfaces/Ccu2.cpp
-mod_ccu2_la_LDFLAGS =-module -avoid-version -shared
+lib_LTLIBRARIES = mod_ccu.la
+mod_ccu_la_SOURCES = DescriptionCreator.cpp MyFamily.cpp MyPacket.cpp MyPeer.cpp Factory.cpp GD.cpp MyCentral.cpp Interfaces.cpp PhysicalInterfaces/Ccu.cpp
+mod_ccu_la_LDFLAGS =-module -avoid-version -shared
 install-exec-hook:
-	rm -f $(DESTDIR)$(libdir)/mod_ccu2.la
+	rm -f $(DESTDIR)$(libdir)/mod_ccu.la

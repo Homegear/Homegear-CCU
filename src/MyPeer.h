@@ -30,7 +30,7 @@
 #ifndef MYPEER_H_
 #define MYPEER_H_
 
-#include "PhysicalInterfaces/Ccu2.h"
+#include "PhysicalInterfaces/Ccu.h"
 #include "MyPacket.h"
 #include <homegear-base/BaseLib.h>
 
@@ -57,11 +57,11 @@ public:
 	//{{{ In table variables
 	std::string getPhysicalInterfaceId();
 	void setPhysicalInterfaceId(std::string);
-    Ccu2::RpcType getRpcType() { return _rpcType; }
-    void setRpcType(Ccu2::RpcType value) { _rpcType = value; saveVariable(20, (int32_t)value); }
+    Ccu::RpcType getRpcType() { return _rpcType; }
+    void setRpcType(Ccu::RpcType value) { _rpcType = value; saveVariable(20, (int32_t)value); }
 	//}}}
 
-	std::shared_ptr<Ccu2>& getPhysicalInterface() { return _physicalInterface; }
+	std::shared_ptr<Ccu>& getPhysicalInterface() { return _physicalInterface; }
 
 	virtual std::string handleCliCommand(std::string command);
 	void packetReceived(PMyPacket& packet);
@@ -95,20 +95,20 @@ public:
 protected:
 	//In table variables:
 	std::string _physicalInterfaceId;
-    Ccu2::RpcType _rpcType = Ccu2::RpcType::bidcos;
+    Ccu::RpcType _rpcType = Ccu::RpcType::bidcos;
 	//End
 
     std::atomic<int64_t> _lastValueUpdate;
     std::atomic<int64_t> _lastConfigUpdate;
 
 	bool _shuttingDown = false;
-	std::shared_ptr<Ccu2> _physicalInterface;
+	std::shared_ptr<Ccu> _physicalInterface;
 	uint32_t _lastRssiDevice = 0;
 
 	virtual void loadVariables(BaseLib::Systems::ICentral* central, std::shared_ptr<BaseLib::Database::DataTable>& rows);
     virtual void saveVariables();
 
-    virtual void setPhysicalInterface(std::shared_ptr<Ccu2> interface);
+    virtual void setPhysicalInterface(std::shared_ptr<Ccu> interface);
 
     void setRssiDevice(uint8_t rssi);
 
