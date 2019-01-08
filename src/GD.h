@@ -31,11 +31,11 @@
 #define GD_H_
 
 #define MY_FAMILY_ID 24
-#define MY_FAMILY_NAME "CCU2"
+#define MY_FAMILY_NAME "CCU"
 
 #include <homegear-base/BaseLib.h>
 #include "MyFamily.h"
-#include "PhysicalInterfaces/Ccu2.h"
+#include "PhysicalInterfaces/Ccu.h"
 #include "Interfaces.h"
 
 namespace MyFamily

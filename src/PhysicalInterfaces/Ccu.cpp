@@ -27,14 +27,14 @@
  * files in the program, then also delete it here.
  */
 
-#include "Ccu2.h"
+#include "Ccu.h"
 #include "../GD.h"
 #include "../MyPacket.h"
 
 namespace MyFamily
 {
 
-Ccu2::Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings) : IPhysicalInterface(GD::bl, GD::family->getFamily(), settings)
+Ccu::Ccu(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings) : IPhysicalInterface(GD::bl, GD::family->getFamily(), settings)
 {
     if(settings->listenThreadPriority == -1)
     {
@@ -42,20 +42,8 @@ Ccu2::Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings
         settings->listenThreadPolicy = SCHED_OTHER;
     }
 
-    _rpcDecoder.reset(new BaseLib::Rpc::RpcDecoder(GD::bl, true, true));
-    _rpcEncoder.reset(new BaseLib::Rpc::RpcEncoder(GD::bl, false, false));
     _xmlrpcDecoder.reset(new BaseLib::Rpc::XmlrpcDecoder(GD::bl));
     _xmlrpcEncoder.reset(new BaseLib::Rpc::XmlrpcEncoder(GD::bl));
-
-    _bidcosDevicesExist = false;
-    _hmipNewDevicesCalled = false;
-    _wiredNewDevicesCalled = false;
-    _unreachable = false;
-    _forceReInit = false;
-    _stopPingThread = false;
-    _bidcosReInit = false;
-    _hmipReInit = false;
-    _wiredReInit = false;
 
     _out.init(GD::bl);
     BaseLib::HelperFunctions::toUpper(settings->id);
@@ -69,11 +57,6 @@ Ccu2::Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings
         return;
     }
 
-    _stopped = true;
-    _lastPongBidcos.store(0);
-    _lastPongHmip.store(0);
-    _lastPongWired.store(0);
-
     if(settings->host.empty()) _noHost = true;
     _hostname = settings->host;
     _port = BaseLib::Math::getNumber(settings->port);
@@ -86,84 +69,16 @@ Ccu2::Ccu2(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings
     _httpClient = std::unique_ptr<BaseLib::HttpClient>(new HttpClient(_bl, _hostname, 8181, false, false));
 }
 
-Ccu2::~Ccu2()
+Ccu::~Ccu()
 {
     _stopCallbackThread = true;
     _stopped = true;
     _stopPingThread = true;
-    _bl->threadManager.join(_listenThread);
-    _bl->threadManager.join(_listenThread2);
-    _bl->threadManager.join(_listenThread3);
     GD::bl->threadManager.join(_initThread);
     GD::bl->threadManager.join(_pingThread);
 }
 
-void Ccu2::reconnect(RpcType rpcType, bool forceReinit)
-{
-    try
-    {
-        std::lock_guard<std::mutex> reconnectGuard(_reconnectMutex);
-        if(rpcType == RpcType::bidcos) _out.printWarning("Warning: Reconnecting HomeMatic BidCoS...");
-        else if(rpcType == RpcType::wired) _out.printWarning("Warning: Reconnecting HomeMatic Wired...");
-        else if(rpcType == RpcType::hmip) _out.printWarning("Warning: Reconnecting HomeMatic IP...");
-
-        if(rpcType == RpcType::bidcos) _bidcosClient->close();
-        else if(rpcType == RpcType::wired) _wiredClient->close();
-        else if(rpcType == RpcType::hmip) _hmipClient->close();
-
-        if(!regaReady())
-        {
-            GD::out.printInfo("Info: ReGa is not ready (" + std::to_string((int32_t)rpcType) + "). Waiting for 10 seconds...");
-            int32_t i = 1;
-            while(!_stopped && !_stopCallbackThread)
-            {
-                if(i % 10 == 0)
-                {
-                    _lastPongBidcos.store(BaseLib::HelperFunctions::getTime());
-                    _lastPongWired.store(BaseLib::HelperFunctions::getTime());
-                    _lastPongHmip.store(BaseLib::HelperFunctions::getTime());
-                    if(regaReady()) break;
-                    GD::out.printInfo("Info: ReGa is not ready (" + std::to_string((int32_t)rpcType) + "). Waiting for 10 seconds...");
-                }
-                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-                i++;
-                continue;
-            }
-        }
-
-        if(rpcType == RpcType::bidcos)
-        {
-            _bidcosClient->open();
-            _bidcosReInit = true;
-        }
-        else if(rpcType == RpcType::wired)
-        {
-            _wiredClient->open();
-            _wiredReInit = true;
-        }
-        else if(rpcType == RpcType::hmip)
-        {
-            _hmipClient->open();
-            _hmipReInit = true;
-        }
-
-        if(forceReinit) _forceReInit = true;
-    }
-    catch(const std::exception& ex)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
-}
-
-void Ccu2::init()
+void Ccu::init()
 {
     try
     {
@@ -198,26 +113,17 @@ void Ccu2::init()
         {
             try
             {
-                if(!_bidcosClient->connected())
+                auto parameters = std::make_shared<BaseLib::Array>();
+                parameters->reserve(2);
+                parameters->push_back(std::make_shared<BaseLib::Variable>("http://" + _listenIp + ":" + std::to_string(_listenPort)));
+                parameters->push_back(std::make_shared<BaseLib::Variable>(_bidcosIdString));
+                auto result = invoke(RpcType::bidcos, "init", parameters);
+                if(result->errorStruct)
                 {
+                    _out.printError("Error calling \"init\" for HomeMatic BidCoS: " + result->structValue->at("faultString")->stringValue);
                     _bidcosReInit = true;
-                    reconnect(RpcType::bidcos, false);
                 }
-                else
-                {
-                    auto parameters = std::make_shared<BaseLib::Array>();
-                    parameters->reserve(2);
-                    parameters->push_back(std::make_shared<BaseLib::Variable>("binary://" + _listenIp + ":" + std::to_string(_listenPort)));
-                    parameters->push_back(std::make_shared<BaseLib::Variable>(_bidcosIdString));
-                    auto result = invoke(RpcType::bidcos, "init", parameters);
-                    if(result->errorStruct)
-                    {
-                        _out.printError("Error calling \"init\" for HomeMatic BidCoS: " + result->structValue->at("faultString")->stringValue);
-                        _bidcosReInit = true;
-                        reconnect(RpcType::bidcos, false);
-                    }
-                    else _bidcosReInit = false;
-                }
+                else _bidcosReInit = false;
             }
             catch(const std::exception& ex)
             {
@@ -240,26 +146,17 @@ void Ccu2::init()
         {
             try
             {
-                if(!_hmipClient->connected())
+                auto parameters = std::make_shared<BaseLib::Array>();
+                parameters->reserve(2);
+                parameters->push_back(std::make_shared<BaseLib::Variable>("http://" + _listenIp + ":" + std::to_string(_listenPort)));
+                parameters->push_back(std::make_shared<BaseLib::Variable>(_hmipIdString));
+                auto result = invoke(RpcType::hmip, "init", parameters);
+                if(result->errorStruct)
                 {
+                    _out.printError("Error calling \"init\" for HomeMatic IP: " + result->structValue->at("faultString")->stringValue);
                     _hmipReInit = true;
-                    reconnect(RpcType::hmip, false);
                 }
-                else
-                {
-                    auto parameters = std::make_shared<BaseLib::Array>();
-                    parameters->reserve(2);
-                    parameters->push_back(std::make_shared<BaseLib::Variable>("http://" + _listenIp + ":" + std::to_string(_listenPort)));
-                    parameters->push_back(std::make_shared<BaseLib::Variable>(_hmipIdString));
-                    auto result = invoke(RpcType::hmip, "init", parameters);
-                    if(result->errorStruct)
-                    {
-                        _out.printError("Error calling \"init\" for HomeMatic IP: " + result->structValue->at("faultString")->stringValue);
-                        _hmipReInit = true;
-                        reconnect(RpcType::hmip, false);
-                    }
-                    else _hmipReInit = false;
-                }
+                else _hmipReInit = false;
             }
             catch(const std::exception& ex)
             {
@@ -282,45 +179,45 @@ void Ccu2::init()
         {
             try
             {
-                if(!_wiredClient->connected())
+                auto parameters = std::make_shared<BaseLib::Array>();
+                parameters->reserve(2);
+                parameters->push_back(std::make_shared<BaseLib::Variable>("http://" + _listenIp + ":" + std::to_string(_listenPort)));
+                parameters->push_back(std::make_shared<BaseLib::Variable>(_wiredIdString));
+                auto result = invoke(RpcType::wired, "init", parameters);
+                if(result->errorStruct)
                 {
-                    _wiredReInit = true;
-                    reconnect(RpcType::wired, false);
-                }
-                else
-                {
-                    auto parameters = std::make_shared<BaseLib::Array>();
-                    parameters->reserve(2);
-                    parameters->push_back(std::make_shared<BaseLib::Variable>("http://" + _listenIp + ":" + std::to_string(_listenPort)));
-                    parameters->push_back(std::make_shared<BaseLib::Variable>(_wiredIdString));
-                    auto result = invoke(RpcType::wired, "init", parameters);
-                    if(result->errorStruct)
+                    if(result->structValue->at("faultCode")->integerValue == 400 || result->structValue->at("faultCode")->integerValue == 503)
                     {
-                        _out.printError("Error calling \"init\" for HomeMatic Wired: " + result->structValue->at("faultString")->stringValue);
-                        _wiredReInit = true;
-                        reconnect(RpcType::wired, false);
+                        _out.printInfo("Info: HomeMatic Wired is not enabled on CCU.");
+                        _wiredReInit.store(false, std::memory_order_release);
+                        _wiredDisabled.store(true, std::memory_order_release);
                     }
-                    else _wiredReInit = false;
+                    else
+                    {
+                        _out.printError("Error calling \"init\" for HomeMatic Wired (" + std::to_string(result->structValue->at("faultCode")->integerValue64) + "): " + result->structValue->at("faultString")->stringValue);
+                        _wiredReInit.store(true, std::memory_order_release);
+                    }
                 }
+                else _wiredReInit.store(false, std::memory_order_release);
             }
             catch(const std::exception& ex)
             {
-                _wiredReInit = true;
+                _wiredReInit.store(true, std::memory_order_release);
                 _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
             }
             catch(BaseLib::Exception& ex)
             {
-                _wiredReInit = true;
+                _wiredReInit.store(true, std::memory_order_release);
                 _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
             }
             catch(...)
             {
-                _wiredReInit = true;
+                _wiredReInit.store(true, std::memory_order_release);
                 _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
             }
         }
 
-        if(!_bidcosReInit && !_hmipReInit && !_wiredReInit) _out.printInfo("Info: Init complete.");
+        if(!_bidcosReInit.load(std::memory_order_acquire) && !_hmipReInit.load(std::memory_order_acquire) && !_wiredReInit.load(std::memory_order_acquire)) _out.printInfo("Info: Init complete.");
     }
     catch(const std::exception& ex)
     {
@@ -336,33 +233,33 @@ void Ccu2::init()
     }
 }
 
-void Ccu2::deinit()
+void Ccu::deinit()
 {
     try
     {
         BaseLib::PArray parameters = std::make_shared<BaseLib::Array>();
         parameters->reserve(2);
-        parameters->push_back(std::make_shared<BaseLib::Variable>("binary://" + _listenIp + ":" + std::to_string(_listenPort)));
+        parameters->push_back(std::make_shared<BaseLib::Variable>("http://" + _listenIp + ":" + std::to_string(_listenPort)));
         parameters->push_back(std::make_shared<BaseLib::Variable>(std::string("")));
-        if(_bidcosClient && _bidcosClient->connected())
+        if(_bidcosClient)
         {
-            auto result = invoke(RpcType::bidcos, "init", parameters, false);
+            auto result = invoke(RpcType::bidcos, "init", parameters);
             if(result->errorStruct) _out.printError("Error calling (de-)\"init\" for HomeMatic BidCoS: " + result->structValue->at("faultString")->stringValue);
         }
 
-        if(_hmipClient && _hmipClient->connected())
+        if(_hmipClient)
         {
             parameters->at(0)->stringValue = "http://" + _listenIp + ":" + std::to_string(_listenPort);
             parameters->at(1)->stringValue = "";
-            auto result = invoke(RpcType::hmip, "init", parameters, false);
+            auto result = invoke(RpcType::hmip, "init", parameters);
             if(result->errorStruct) _out.printError("Error calling (de-)\"init\" for HomeMatic IP: " + result->structValue->at("faultString")->stringValue);
         }
 
-        if(_wiredClient && _wiredClient->connected())
+        if(_wiredClient && !_wiredDisabled)
         {
             parameters->at(0)->stringValue = "http://" + _listenIp + ":" + std::to_string(_listenPort);
             parameters->at(1)->stringValue = "";
-            auto result = invoke(RpcType::wired, "init", parameters, false);
+            auto result = invoke(RpcType::wired, "init", parameters);
             if(result->errorStruct) _out.printError("Error calling (de-)\"init\" for HomeMatic Wired: " + result->structValue->at("faultString")->stringValue);
         }
 
@@ -382,7 +279,7 @@ void Ccu2::deinit()
     }
 }
 
-void Ccu2::startListening()
+void Ccu::startListening()
 {
     try
     {
@@ -404,9 +301,9 @@ void Ccu2::startListening()
             _wiredReInit = false;
 
             BaseLib::TcpSocket::TcpServerInfo serverInfo;
-            serverInfo.newConnectionCallback = std::bind(&Ccu2::newConnection, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
-            serverInfo.connectionClosedCallback = std::bind(&Ccu2::connectionClosed, this, std::placeholders::_1);
-            serverInfo.packetReceivedCallback = std::bind(&Ccu2::packetReceived, this, std::placeholders::_1, std::placeholders::_2);
+            serverInfo.newConnectionCallback = std::bind(&Ccu::newConnection, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+            serverInfo.connectionClosedCallback = std::bind(&Ccu::connectionClosed, this, std::placeholders::_1);
+            serverInfo.packetReceivedCallback = std::bind(&Ccu::packetReceived, this, std::placeholders::_1, std::placeholders::_2);
 
             std::string settingName = "eventServerPortRange";
             auto setting = GD::family->getFamilySetting(settingName);
@@ -457,79 +354,19 @@ void Ccu2::startListening()
 
             _out.printInfo("Info: Connecting to IP " + _hostname + " and ports " + (_port != 0 ? std::to_string(_port) : "") + (_port3 != 0 ? ", " + std::to_string(_port3) : "") + (_port2 != 0 ? ", " + std::to_string(_port2) : "") + ".");
 
-            if(_port != 0)
-            {
-                try
-                {
-                    _bidcosClient = std::unique_ptr<BaseLib::TcpSocket>(new BaseLib::TcpSocket(_bl, _hostname, std::to_string(_port)));
-                    _bidcosClient->open();
-                }
-                catch(BaseLib::Exception& ex)
-                {
-                    _out.printError("Could not connect to HomeMatic BidCoS port. Assuming HomeMatic BidCoS is not available.");
-                    _bidcosClient.reset();
-                }
-            }
-            if(_port2 != 0)
-            {
-                try
-                {
-                    _hmipClient = std::unique_ptr<BaseLib::TcpSocket>(new BaseLib::TcpSocket(_bl, _hostname, std::to_string(_port2)));
-                    _hmipClient->open();
-                }
-                catch(BaseLib::Exception& ex)
-                {
-                    _out.printWarning("Could not connect to HomeMatic IP port. Assuming HomeMatic IP is not available.");
-                    _hmipClient.reset();
-                }
-            }
-            if(_port3 != 0)
-            {
-                try
-                {
-                    _wiredClient = std::unique_ptr<BaseLib::TcpSocket>(new BaseLib::TcpSocket(_bl, _hostname, std::to_string(_port3)));
-                    _wiredClient->open();
-                }
-                catch(BaseLib::Exception& ex)
-                {
-                    _out.printWarning("Could not connect to HomeMatic Wired port. Assuming HomeMatic Wired is not available.");
-                    _wiredClient.reset();
-                }
-            }
-            _ipAddress = "";
-            if(_bidcosClient) _ipAddress = _bidcosClient->getIpAddress();
-            else if(_hmipClient) _ipAddress = _hmipClient->getIpAddress();
-            else if(_wiredClient) _ipAddress = _wiredClient->getIpAddress();
-            _noHost = _hostname.empty();
+            if(_port != 0) _bidcosClient = std::unique_ptr<BaseLib::HttpClient>(new BaseLib::HttpClient(_bl, _hostname, _port, false, false));
+            if(_port2 != 0) _hmipClient = std::unique_ptr<BaseLib::HttpClient>(new BaseLib::HttpClient(_bl, _hostname, _port2, false, false));
+            if(_port3 != 0) _wiredClient = std::unique_ptr<BaseLib::HttpClient>(new BaseLib::HttpClient(_bl, _hostname, _port3, false, false));
+
+            _ipAddress = BaseLib::Net::resolveHostname(_hostname);
 
             _bidcosIdString = "Homegear_BidCoS_" + _listenIp + "_" + std::to_string(_listenPort);
             _hmipIdString = "Homegear_HMIP_" + _listenIp + "_" + std::to_string(_listenPort);
             _wiredIdString = "Homegear_Wired_" + _listenIp + "_" + std::to_string(_listenPort);
 
-            if(_bidcosClient && _port != 0)
-            {
-                if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::bidcos);
-                else _bl->threadManager.start(_listenThread, true, &Ccu2::listen, this, RpcType::bidcos);
-            }
-
-            if(_hmipClient && _port2 != 0)
-            {
-                if(!_bidcosClient) _connectedRpcType = RpcType::hmip;
-
-                if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread2, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::hmip);
-                else _bl->threadManager.start(_listenThread2, true, &Ccu2::listen, this, RpcType::hmip);
-            }
-
-            if(_wiredClient && _port3 != 0)
-            {
-                if(!_bidcosClient && _connectedRpcType == RpcType::bidcos) _connectedRpcType = RpcType::wired;
-
-                if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread3, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::wired);
-                else _bl->threadManager.start(_listenThread3, true, &Ccu2::listen, this, RpcType::wired);
-            }
-
             _stopPingThread = false;
-            _bl->threadManager.start(_pingThread, true, &Ccu2::ping, this);
+            _bl->threadManager.start(_pingThread, true, &Ccu::ping, this);
+            _bl->threadManager.start(_initThread, true, &Ccu::init, this);
         }
         IPhysicalInterface::startListening();
     }
@@ -547,7 +384,7 @@ void Ccu2::startListening()
     }
 }
 
-void Ccu2::stopListening()
+void Ccu::stopListening()
 {
     try
     {
@@ -556,15 +393,9 @@ void Ccu2::stopListening()
         deinit();
 
         _stopped = true;
-        _stopCallbackThread = true;
-        _bl->threadManager.join(_listenThread);
-        _stopCallbackThread = false;
 
         _bl->threadManager.join(_pingThread);
 
-        if(_bidcosClient) _bidcosClient->close();
-        if(_hmipClient) _hmipClient->close();
-        if(_wiredClient) _wiredClient->close();
         if(_server)
         {
             _server->stopServer();
@@ -586,13 +417,12 @@ void Ccu2::stopListening()
     }
 }
 
-void Ccu2::newConnection(int32_t clientId, std::string address, uint16_t port)
+void Ccu::newConnection(int32_t clientId, std::string address, uint16_t port)
 {
     try
     {
         if(GD::bl->debugLevel >= 5) _out.printDebug("Debug: New connection from " + address + " on port " + std::to_string(port) + ". Client ID is: " + std::to_string(clientId));
         CcuClientInfo clientInfo;
-        clientInfo.binaryRpc = std::make_shared<BaseLib::Rpc::BinaryRpc>(_bl);
         clientInfo.http = std::make_shared<BaseLib::Http>();
 
         std::lock_guard<std::mutex> ccuClientInfoGuard(_ccuClientInfoMutex);
@@ -612,7 +442,7 @@ void Ccu2::newConnection(int32_t clientId, std::string address, uint16_t port)
     }
 }
 
-void Ccu2::connectionClosed(int32_t clientId)
+void Ccu::connectionClosed(int32_t clientId)
 {
     try
     {
@@ -635,9 +465,8 @@ void Ccu2::connectionClosed(int32_t clientId)
     }
 }
 
-void Ccu2::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet)
+void Ccu::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet)
 {
-    std::shared_ptr<BaseLib::Rpc::BinaryRpc> binaryRpc;
     std::shared_ptr<BaseLib::Http> http;
 
     try
@@ -652,58 +481,33 @@ void Ccu2::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet
                 _out.printError("Error: Client with ID " + std::to_string(clientId) + " not found in map.");
                 return;
             }
-            binaryRpc = clientIterator->second.binaryRpc;
             http = clientIterator->second.http;
         }
 
         if(packet.empty()) return;
-        bool isBinaryRpc = binaryRpc->processingStarted();
         uint32_t processedBytes = 0;
         try
         {
             while(processedBytes < packet.size())
             {
-                if(!isBinaryRpc && !binaryRpc->processingStarted() && !http->headerProcessingStarted())
-                {
-                    isBinaryRpc = packet.size() - processedBytes < 3 ? (char)(*(packet.data() + processedBytes)) == 'B' : !strncmp((char*)(packet.data() + processedBytes), "Bin", 3);
-                }
-
                 std::string methodName;
                 BaseLib::PArray parameters;
 
-                if(isBinaryRpc)
+                processedBytes += http->process((char*)packet.data() + processedBytes, packet.size() - processedBytes);
+                if(http->isFinished())
                 {
-                    processedBytes += binaryRpc->process((char*)packet.data() + processedBytes, packet.size() - processedBytes);
-                    if(binaryRpc->isFinished())
+                    if(http->getHeader().method == "POST")
                     {
-                        if(binaryRpc->getType() == BaseLib::Rpc::BinaryRpc::Type::request)
-                        {
-                            parameters = _rpcDecoder->decodeRequest(binaryRpc->getData(), methodName);
-                            processPacket(clientId, true, methodName, parameters);
-                        }
-                        isBinaryRpc = false;
-                        binaryRpc->reset();
+                        parameters = _xmlrpcDecoder->decodeRequest(http->getContent(), methodName);
+                        processPacket(clientId, methodName, parameters);
                     }
-                }
-                else
-                {
-                    processedBytes += http->process((char*)packet.data() + processedBytes, packet.size() - processedBytes);
-                    if(http->isFinished())
-                    {
-                        if(http->getHeader().method == "POST")
-                        {
-                            parameters = _xmlrpcDecoder->decodeRequest(http->getContent(), methodName);
-                            processPacket(clientId, false, methodName, parameters);
-                        }
-                        http->reset();
-                    }
+                    http->reset();
                 }
             }
         }
         catch(BaseLib::Rpc::BinaryRpcException& ex)
         {
             _out.printError("Error processing packet (1): " + ex.what());
-            binaryRpc->reset();
         }
         return;
     }
@@ -720,11 +524,10 @@ void Ccu2::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet
         _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
 
-    binaryRpc->reset();
     http->reset();
 }
 
-void Ccu2::processPacket(int32_t clientId, bool binaryRpc, std::string& methodName, BaseLib::PArray parameters)
+void Ccu::processPacket(int32_t clientId, std::string& methodName, BaseLib::PArray parameters)
 {
     try
     {
@@ -774,12 +577,7 @@ void Ccu2::processPacket(int32_t clientId, bool binaryRpc, std::string& methodNa
         }
         else if(methodName == "newDevices")
         {
-            if(!binaryRpc)
-            {
-                parameters->at(0)->integerValue = (int32_t) RpcType::hmip;
-                _hmipNewDevicesCalled = true;
-            }
-            else if(parameters->at(0)->stringValue == _bidcosIdString)
+            if(parameters->at(0)->stringValue == _bidcosIdString)
             {
                 parameters->at(0)->integerValue = (int32_t) RpcType::bidcos;
                 _bidcosDevicesExist = parameters->at(1)->arrayValue->size() > 52;
@@ -789,15 +587,20 @@ void Ccu2::processPacket(int32_t clientId, bool binaryRpc, std::string& methodNa
                 parameters->at(0)->integerValue = (int32_t)RpcType::wired;
                 _wiredNewDevicesCalled = true;
             }
+            else
+            {
+                parameters->at(0)->integerValue = (int32_t) RpcType::hmip;
+                _hmipNewDevicesCalled = true;
+            }
             _out.printInfo("Info: CCU (" + std::to_string(parameters->at(0)->integerValue) + ") is calling RPC method " + methodName);
             PMyPacket packet = std::make_shared<MyPacket>(methodName, parameters);
             raisePacketReceived(packet);
         }
         else if(methodName == "system.listMethods" || methodName == "listDevices")
         {
-            if(!binaryRpc) parameters->at(0)->integerValue = (int32_t)RpcType::hmip;
-            else if(parameters->at(0)->stringValue == _bidcosIdString) parameters->at(0)->integerValue = (int32_t) RpcType::bidcos;
+            if(parameters->at(0)->stringValue == _bidcosIdString) parameters->at(0)->integerValue = (int32_t) RpcType::bidcos;
             else if(parameters->at(0)->stringValue == _wiredIdString) parameters->at(0)->integerValue = (int32_t)RpcType::wired;
+            else parameters->at(0)->integerValue = (int32_t)RpcType::hmip;
             _out.printInfo("Info: CCU (" + std::to_string(parameters->at(0)->integerValue) + ") is calling RPC method " + methodName);
             response->setType(BaseLib::VariableType::tArray);
         }
@@ -815,21 +618,13 @@ void Ccu2::processPacket(int32_t clientId, bool binaryRpc, std::string& methodNa
         }
 
         BaseLib::TcpSocket::TcpPacket responsePacket;
-        if(binaryRpc)
-        {
-            _rpcEncoder->encodeResponse(response, responsePacket);
-            _server->sendToClient(clientId, responsePacket, true);
-        }
-        else
-        {
-            std::vector<uint8_t> xmlData;
-            _xmlrpcEncoder->encodeResponse(response, xmlData);
-            std::string header = "HTTP/1.1 200 OK\r\nConnection: Close\r\nContent-Type: text/xml\r\nContent-Length: " + std::to_string(xmlData.size()) + "\r\n\r\n";
-            responsePacket.reserve(header.size() + xmlData.size());
-            responsePacket.insert(responsePacket.end(), header.begin(), header.end());
-            responsePacket.insert(responsePacket.end(), xmlData.begin(), xmlData.end());
-            _server->sendToClient(clientId, responsePacket, true);
-        }
+        std::vector<uint8_t> xmlData;
+        _xmlrpcEncoder->encodeResponse(response, xmlData);
+        std::string header = "HTTP/1.1 200 OK\r\nConnection: Close\r\nContent-Type: text/xml\r\nContent-Length: " + std::to_string(xmlData.size()) + "\r\n\r\n";
+        responsePacket.reserve(header.size() + xmlData.size());
+        responsePacket.insert(responsePacket.end(), header.begin(), header.end());
+        responsePacket.insert(responsePacket.end(), xmlData.begin(), xmlData.end());
+        _server->sendToClient(clientId, responsePacket, true);
     }
     catch(const std::exception& ex)
     {
@@ -845,126 +640,7 @@ void Ccu2::processPacket(int32_t clientId, bool binaryRpc, std::string& methodNa
     }
 }
 
-void Ccu2::listen(Ccu2::RpcType rpcType)
-{
-    try
-    {
-        uint32_t bytesRead = 0;
-        uint32_t processedBytes = 0;
-        std::vector<char> buffer(1024);
-        BaseLib::Rpc::BinaryRpc binaryRpc(GD::bl);
-        BaseLib::Http http;
-
-        if(rpcType == _connectedRpcType)
-        {
-            //Only start threads once
-            _bl->threadManager.start(_initThread, true, &Ccu2::init, this);
-        }
-
-        while(!_stopped && !_stopCallbackThread)
-        {
-            try
-            {
-                try
-                {
-                    if(rpcType == RpcType::bidcos) bytesRead = _bidcosClient->proofread(buffer.data(), buffer.size());
-                    else if(rpcType == RpcType::wired) bytesRead = _wiredClient->proofread(buffer.data(), buffer.size());
-                    else if(rpcType == RpcType::hmip) bytesRead = _hmipClient->proofread(buffer.data(), buffer.size());
-                }
-                catch(SocketTimeOutException& ex)
-                {
-                    if(ex.getType() == SocketTimeOutException::SocketTimeOutType::readTimeout)
-                    {
-                        if(_bidcosReInit || _wiredReInit || _hmipReInit) continue;
-                        reconnect(rpcType, true);
-                    }
-                    continue;
-                }
-
-                if(bytesRead > buffer.size()) bytesRead = buffer.size();
-
-                try
-                {
-                    processedBytes = 0;
-                    while(processedBytes < bytesRead)
-                    {
-                        if(rpcType == RpcType::bidcos || rpcType == RpcType::wired)
-                        {
-                            processedBytes += binaryRpc.process(buffer.data() + processedBytes, bytesRead - processedBytes);
-                            if(binaryRpc.isFinished())
-                            {
-                                if(binaryRpc.getType() == BaseLib::Rpc::BinaryRpc::Type::response)
-                                {
-                                    std::unique_lock<std::mutex> waitLock(_requestWaitMutex);
-                                    {
-                                        std::lock_guard<std::mutex> responseGuard(_responseMutex);
-                                        _response = _rpcDecoder->decodeResponse(binaryRpc.getData());
-                                    }
-                                    waitLock.unlock();
-                                    _requestConditionVariable.notify_all();
-                                }
-                                binaryRpc.reset();
-                            }
-                        }
-                        else if(rpcType == RpcType::hmip)
-                        {
-                            processedBytes += http.process(buffer.data() + processedBytes, bytesRead - processedBytes, true);
-                            if(http.isFinished())
-                            {
-                                std::unique_lock<std::mutex> waitLock(_requestWaitMutex);
-                                {
-                                    std::lock_guard<std::mutex> responseGuard(_responseMutex);
-                                    _response = _xmlrpcDecoder->decodeResponse(http.getContent());
-                                }
-                                waitLock.unlock();
-                                _requestConditionVariable.notify_all();
-                                http.reset();
-                            }
-                        }
-                    }
-                }
-                catch(BaseLib::Rpc::BinaryRpcException& ex)
-                {
-                    _out.printError("Error processing packet (2): " + ex.what());
-                    http.reset();
-                    binaryRpc.reset();
-                }
-            }
-            catch(const std::exception& ex)
-            {
-                _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-                reconnect(rpcType, true);
-            }
-            catch(BaseLib::Exception& ex)
-            {
-                _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-                reconnect(rpcType, true);
-            }
-            catch(...)
-            {
-                _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-                reconnect(rpcType, true);
-            }
-        }
-    }
-    catch(const std::exception& ex)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
-}
-
-void Ccu2::ping()
+void Ccu::ping()
 {
     try
     {
@@ -974,11 +650,6 @@ void Ccu2::ping()
             {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1000));
                 if(_stopped || _stopCallbackThread || _stopPingThread) return;
-                if(_forceReInit)
-                {
-                    _forceReInit = false;
-                    break;
-                }
             }
 
             if(!isOpen())
@@ -989,13 +660,13 @@ void Ccu2::ping()
                 if(!_unreachable)
                 {
                     _unreachable = true;
-                    _bl->globalServiceMessages.set(MY_FAMILY_ID, 0, BaseLib::HelperFunctions::getTimeSeconds(), "CCU_UNREACHABLE." + _settings->serialNumber, data, 1);
+                    _bl->globalServiceMessages.set(MY_FAMILY_ID, 0, _settings->id, BaseLib::HelperFunctions::getTimeSeconds(), "l10n.ccu.serviceMessage.ccuUnreachable", std::list<std::string>{ _settings->serialNumber, _ipAddress }, data, 1);
                 }
             }
             else
             {
                 _unreachable = false;
-                _bl->globalServiceMessages.unset(MY_FAMILY_ID, 0, "CCU_UNREACHABLE." + _settings->serialNumber);
+                _bl->globalServiceMessages.unset(MY_FAMILY_ID, 0, _settings->id, "l10n.ccu.serviceMessage.ccuUnreachable");
 
                 getCcuServiceMessages();
             }
@@ -1009,7 +680,6 @@ void Ccu2::ping()
                 {
                     _out.printError("Error calling \"ping\" (BidCoS): " + result->structValue->at("faultString")->stringValue);
                     _bidcosReInit = true;
-                    _bidcosClient->close();
                 }
             }
 
@@ -1023,7 +693,7 @@ void Ccu2::ping()
                 else _bidcosReInit = true;
             }
 
-            if(_wiredClient && ((_wiredNewDevicesCalled && BaseLib::HelperFunctions::getTime() - _lastPongWired.load() > 3600000) || _wiredReInit))
+            if(_wiredClient && !_wiredDisabled && ((_wiredNewDevicesCalled && BaseLib::HelperFunctions::getTime() - _lastPongWired.load() > 3600000) || _wiredReInit))
             {
                 if(regaReady())
                 {
@@ -1043,72 +713,13 @@ void Ccu2::ping()
                 else _hmipReInit = true;
             }
 
-            if(_port != 0 && !_bidcosClient)
-            {
-                try
-                {
-                    _bidcosClient = std::unique_ptr<BaseLib::TcpSocket>(new BaseLib::TcpSocket(_bl, _hostname, std::to_string(_port2)));
-                    _bidcosClient->open();
-                }
-                catch(BaseLib::Exception& ex)
-                {
-                    _bidcosClient.reset();
-                }
-
-                if(_bidcosClient)
-                {
-                    if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread2, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::bidcos);
-                    else _bl->threadManager.start(_listenThread2, true, &Ccu2::listen, this, RpcType::bidcos);
-                }
-            }
-
-            if(_port2 != 0 && !_hmipClient)
-            {
-                try
-                {
-                    _hmipClient = std::unique_ptr<BaseLib::TcpSocket>(new BaseLib::TcpSocket(_bl, _hostname, std::to_string(_port2)));
-                    _hmipClient->open();
-                }
-                catch(BaseLib::Exception& ex)
-                {
-                    _hmipClient.reset();
-                }
-
-                if(_hmipClient)
-                {
-                    if(!_bidcosClient) _connectedRpcType = RpcType::hmip;
-
-                    if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread2, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::hmip);
-                    else _bl->threadManager.start(_listenThread2, true, &Ccu2::listen, this, RpcType::hmip);
-                }
-            }
-
-            if(_port3 != 0 && !_wiredClient)
-            {
-                try
-                {
-                    _wiredClient = std::unique_ptr<BaseLib::TcpSocket>(new BaseLib::TcpSocket(_bl, _hostname, std::to_string(_port3)));
-                    _wiredClient->open();
-                }
-                catch(BaseLib::Exception& ex)
-                {
-                    _wiredClient.reset();
-                }
-
-                if(_wiredClient)
-                {
-                    if(!_bidcosClient && _connectedRpcType == RpcType::bidcos) _connectedRpcType = RpcType::wired;
-
-                    if(_settings->listenThreadPriority > -1) _bl->threadManager.start(_listenThread3, true, _settings->listenThreadPriority, _settings->listenThreadPolicy, &Ccu2::listen, this, RpcType::wired);
-                    else _bl->threadManager.start(_listenThread3, true, &Ccu2::listen, this, RpcType::wired);
-                }
-            }
+            if(_port != 0 && !_bidcosClient) _bidcosClient = std::unique_ptr<BaseLib::HttpClient>(new BaseLib::HttpClient(_bl, _hostname, _port, false, false));
+            if(_port2 != 0 && !_hmipClient) _hmipClient = std::unique_ptr<BaseLib::HttpClient>(new BaseLib::HttpClient(_bl, _hostname, _port2, false, false));
+            if(_port3 != 0 && !_wiredClient) _wiredClient = std::unique_ptr<BaseLib::HttpClient>(new BaseLib::HttpClient(_bl, _hostname, _port3, false, false));
 
             if(_ipAddress.empty())
             {
-                if(_bidcosClient) _ipAddress = _bidcosClient->getIpAddress();
-                else if(_hmipClient) _ipAddress = _hmipClient->getIpAddress();
-                else if(_wiredClient) _ipAddress = _wiredClient->getIpAddress();
+                _ipAddress = BaseLib::Net::resolveHostname(_hostname);
                 _noHost = _hostname.empty();
             }
         }
@@ -1127,74 +738,52 @@ void Ccu2::ping()
     }
 }
 
-BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, BaseLib::PArray parameters, bool wait)
+BaseLib::PVariable Ccu::invoke(Ccu::RpcType rpcType, std::string methodName, BaseLib::PArray parameters)
 {
     try
     {
-        if(_stopped) return BaseLib::Variable::createError(-32500, "CCU2 is stopped.");
+        if(_stopped) return BaseLib::Variable::createError(-32500, "CCU is stopped.");
         if(rpcType == RpcType::bidcos && !_bidcosClient) return BaseLib::Variable::createError(-32501, "HomeMatic BidCoS is disabled.");
         else if(rpcType == RpcType::hmip && !_hmipClient) return BaseLib::Variable::createError(-32501, "HomeMatic IP is disabled.");
-        else if(rpcType == RpcType::wired && !_wiredClient) return BaseLib::Variable::createError(-32501, "HomeMatic Wired is disabled.");
+        else if(rpcType == RpcType::wired && (!_wiredClient || _wiredDisabled)) return BaseLib::Variable::createError(-32501, "HomeMatic Wired is disabled.");
 
         std::lock_guard<std::mutex> invokeGuard(_invokeMutex);
 
-        std::vector<char> data;
-        if(rpcType == RpcType::bidcos || rpcType == RpcType::wired) _rpcEncoder->encodeRequest(methodName, parameters, data);
-        else if(rpcType == RpcType::hmip)
-        {
-            std::vector<char> xmlData;
-            _xmlrpcEncoder->encodeRequest(methodName, parameters, xmlData);
-            xmlData.push_back('\r');
-            xmlData.push_back('\n');
-            std::string header = "POST / HTTP/1.1\r\nUser-Agent: homegear-ccu\r\nHost: " + _ipAddress + ":" + std::to_string(_port2) + "\r\nContent-Type: text/xml\r\nContent-Length: " + std::to_string(xmlData.size()) + "\r\nConnection: Keep-Alive\r\n\r\n";
-            data.reserve(header.size() + xmlData.size());
-            data.insert(data.end(), header.begin(), header.end());
-            data.insert(data.end(), xmlData.begin(), xmlData.end());
-        }
+        std::string data;
+        std::vector<char> xmlData;
+        _xmlrpcEncoder->encodeRequest(methodName, parameters, xmlData);
+        xmlData.push_back('\r');
+        xmlData.push_back('\n');
+        std::string header = "POST / HTTP/1.1\r\nUser-Agent: homegear-ccu\r\nHost: " + _ipAddress + ":" + std::to_string(_port2) + "\r\nContent-Type: text/xml\r\nContent-Length: " + std::to_string(xmlData.size()) + "\r\nConnection: Keep-Alive\r\n\r\n";
+        data.reserve(header.size() + xmlData.size());
+        data.insert(data.end(), header.begin(), header.end());
+        data.insert(data.end(), xmlData.begin(), xmlData.end());
 
-        if(wait)
-        {
-            std::lock_guard<std::mutex> responseGuard(_responseMutex);
-            _response = std::make_shared<BaseLib::Variable>();
-        }
-
+        BaseLib::Http httpResponse;
         try
         {
-            if(rpcType == RpcType::bidcos) _bidcosClient->proofwrite(data);
-            else if(rpcType == RpcType::hmip) _hmipClient->proofwrite(data);
-            else if(rpcType == RpcType::wired) _wiredClient->proofwrite(data);
+            if(GD::bl->debugLevel >= 5) GD::out.printDebug("Debug: Sending (" + std::to_string((int)rpcType) + ") " + std::string(data.begin(), data.end()));
+
+            if(rpcType == RpcType::bidcos) _bidcosClient->sendRequest(data, httpResponse, false);
+            else if(rpcType == RpcType::hmip) _hmipClient->sendRequest(data, httpResponse, false);
+            else if(rpcType == RpcType::wired) _wiredClient->sendRequest(data, httpResponse, false);
+
+            if(GD::bl->debugLevel >= 5) GD::out.printDebug("Debug: Response was (" + std::to_string((int)rpcType) + ") " + std::string(httpResponse.getContent().data(), httpResponse.getContentSize()));
         }
-        catch(SocketOperationException& ex)
+        catch(BaseLib::Exception& ex)
         {
-            _out.printError("Error: Could not write to socket: " + ex.what());
-            return BaseLib::Variable::createError(-1, ex.what());
+            if(rpcType == RpcType::wired && methodName == "init") return BaseLib::Variable::createError(400, "Bad Request");
+            else return BaseLib::Variable::createError(-1, ex.what());
         }
 
-        if(wait)
-        {
-            std::unique_lock<std::mutex> waitLock(_requestWaitMutex);
-            _requestConditionVariable.wait_for(waitLock, std::chrono::milliseconds(60000), [&]
-            {
-                std::lock_guard<std::mutex> responseGuard(_responseMutex);
-                return _response->type != BaseLib::VariableType::tVoid || _stopped;
-            });
-
-            std::lock_guard<std::mutex> responseGuard(_responseMutex);
-            if(_response->type == BaseLib::VariableType::tVoid)
-            {
-                _out.printError("Error: No response received to RPC request. Method: " + methodName);
-                return BaseLib::Variable::createError(-1, "No response received.");
-            }
-
-            return _response;
-        }
-        else return std::make_shared<BaseLib::Variable>();
+        if(httpResponse.getHeader().responseCode == 400 || httpResponse.getHeader().responseCode == 503) return BaseLib::Variable::createError(400, "Bad Request");
+        else return _xmlrpcDecoder->decodeResponse(httpResponse.getContent());
     }
-    catch(const std::exception& ex)
+    catch(BaseLib::Exception& ex)
     {
         return BaseLib::Variable::createError(-32500, ex.what());
     }
-    catch(BaseLib::Exception& ex)
+    catch(const std::exception& ex)
     {
         return BaseLib::Variable::createError(-32500, ex.what());
     }
@@ -1204,7 +793,7 @@ BaseLib::PVariable Ccu2::invoke(Ccu2::RpcType rpcType, std::string methodName, B
     }
 }
 
-bool Ccu2::regaReady()
+bool Ccu::regaReady()
 {
     try
     {
@@ -1236,7 +825,7 @@ bool Ccu2::regaReady()
     return false;
 }
 
-std::unordered_map<std::string, std::string> Ccu2::getNames()
+std::unordered_map<std::string, std::string> Ccu::getNames()
 {
     std::unordered_map<std::string, std::string> deviceNames;
     try
@@ -1273,7 +862,7 @@ std::unordered_map<std::string, std::string> Ccu2::getNames()
     return deviceNames;
 }
 
-void Ccu2::getCcuServiceMessages()
+void Ccu::getCcuServiceMessages()
 {
     try
     {
