@@ -31,7 +31,7 @@
 #include "../config.h"
 #include "GD.h"
 
-BaseLib::Systems::DeviceFamily* MyFactory::createDeviceFamily(BaseLib::SharedObjects* bl, BaseLib::Systems::DeviceFamily::IFamilyEventSink* eventHandler)
+BaseLib::Systems::DeviceFamily* MyFactory::createDeviceFamily(BaseLib::SharedObjects* bl, BaseLib::Systems::IFamilyEventSink* eventHandler)
 {
 	return new MyFamily::MyFamily(bl, eventHandler);
 }
