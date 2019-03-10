@@ -70,8 +70,6 @@ protected:
 	std::atomic_bool _stopWorkerThread;
 	std::thread _workerThread;
 
-    std::atomic_bool _pairing;
-    std::atomic<uint32_t> _timeLeftInPairingMode;
     std::atomic_bool _stopPairingModeThread;
     std::mutex _pairingModeThreadMutex;
     std::thread _pairingModeThread;
