@@ -86,6 +86,8 @@ public:
 	 */
     virtual void homegearShuttingDown();
 
+    void worker();
+
 	//RPC methods
     virtual PVariable getDeviceInfo(BaseLib::PRpcClientInfo clientInfo, std::map<std::string, bool> fields);
     virtual PVariable getParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channel, ParameterGroup::Type::Enum type, uint64_t remoteID, int32_t remoteChannel, bool checkAcls);
@@ -97,9 +99,6 @@ protected:
 	std::string _physicalInterfaceId;
     Ccu::RpcType _rpcType = Ccu::RpcType::bidcos;
 	//End
-
-    std::atomic<int64_t> _lastValueUpdate;
-    std::atomic<int64_t> _lastConfigUpdate;
 
 	bool _shuttingDown = false;
 	std::shared_ptr<Ccu> _physicalInterface;
@@ -124,11 +123,6 @@ protected:
 	void sendPacket(PMyPacket packet, std::string responseId, int32_t delay);
 
 	// {{{ Hooks
-        /**
-         * {@inheritDoc}
-         */
-        virtual bool getAllConfigHook2(PRpcClientInfo clientInfo, PParameter parameter, uint32_t channel, PVariable parameters);
-
 		/**
 		 * {@inheritDoc}
 		 */
