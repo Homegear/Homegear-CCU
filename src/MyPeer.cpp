@@ -155,6 +155,34 @@ void MyPeer::homegearShuttingDown()
     }
 }
 
+void MyPeer::worker()
+{
+    try
+    {
+        for(auto& channel : _rpcDevice->functions)
+        {
+            getParamset(BaseLib::PRpcClientInfo(), channel.first, BaseLib::DeviceDescription::ParameterGroup::Type::Enum::config, 0, -1, false);
+        }
+
+        for(auto& channel : _rpcDevice->functions)
+        {
+            getParamset(BaseLib::PRpcClientInfo(), channel.first, BaseLib::DeviceDescription::ParameterGroup::Type::Enum::variables, 0, -1, false);
+        }
+    }
+    catch(const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+}
+
 std::string MyPeer::handleCliCommand(std::string command)
 {
     try
@@ -651,49 +679,10 @@ PParameterGroup MyPeer::getParameterSet(int32_t channel, ParameterGroup::Type::E
     return PParameterGroup();
 }
 
-bool MyPeer::getAllConfigHook2(PRpcClientInfo clientInfo, PParameter parameter, uint32_t channel, PVariable parameters)
-{
-    try
-    {
-        if(BaseLib::HelperFunctions::getTime() - _lastConfigUpdate.load() > 60000)
-        {
-            for(auto& channel : _rpcDevice->functions)
-            {
-                getParamset(clientInfo, channel.first, BaseLib::DeviceDescription::ParameterGroup::Type::Enum::config, 0, -1, false);
-            }
-
-            _lastConfigUpdate.store(BaseLib::HelperFunctions::getTime());
-        }
-    }
-    catch(const std::exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
-    return false;
-}
-
 bool MyPeer::getAllValuesHook2(PRpcClientInfo clientInfo, PParameter parameter, uint32_t channel, PVariable parameters)
 {
     try
     {
-        if(BaseLib::HelperFunctions::getTime() - _lastValueUpdate.load() > 60000)
-        {
-            for(auto& channel : _rpcDevice->functions)
-            {
-                getParamset(clientInfo, channel.first, BaseLib::DeviceDescription::ParameterGroup::Type::Enum::variables, 0, -1, false);
-            }
-
-            _lastValueUpdate.store(BaseLib::HelperFunctions::getTime());
-        }
-
         if(channel == 1)
         {
             if(parameter->id == "PEER_ID")
