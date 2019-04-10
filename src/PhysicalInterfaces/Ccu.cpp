@@ -507,7 +507,7 @@ void Ccu::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet)
         }
         catch(BaseLib::Rpc::BinaryRpcException& ex)
         {
-            _out.printError("Error processing packet (1): " + ex.what());
+            _out.printError("Error processing packet (1): " + std::string(ex.what()));
         }
         return;
     }
@@ -517,7 +517,7 @@ void Ccu::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet)
     }
     catch(BaseLib::Exception& ex)
     {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what() + " Packet was: " + BaseLib::HelperFunctions::getHexString(packet));
+        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, std::string(ex.what()) + " Packet was: " + BaseLib::HelperFunctions::getHexString(packet));
     }
     catch(...)
     {
