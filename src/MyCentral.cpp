@@ -290,7 +290,7 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
 		PMyPacket myPacket(std::dynamic_pointer_cast<MyPacket>(packet));
 		if(!myPacket) return false;
 
-		if(_bl->debugLevel >= 4) _bl->out.printInfo(BaseLib::HelperFunctions::getTimeString(myPacket->timeReceived()) + " Packet received (" + senderId + "): Method name: " + myPacket->getMethodName());
+		if(_bl->debugLevel >= 4) _bl->out.printInfo(BaseLib::HelperFunctions::getTimeString(myPacket->getTimeReceived()) + " Packet received (" + senderId + "): Method name: " + myPacket->getMethodName());
 
         if(myPacket->getMethodName() == "newDevices")
         {
