@@ -103,6 +103,7 @@ protected:
 	bool _shuttingDown = false;
 	std::shared_ptr<Ccu> _physicalInterface;
 	uint32_t _lastRssiDevice = 0;
+	int32_t _lastQueriedConfigChannel = -1;
 
 	virtual void loadVariables(BaseLib::Systems::ICentral* central, std::shared_ptr<BaseLib::Database::DataTable>& rows);
     virtual void saveVariables();
