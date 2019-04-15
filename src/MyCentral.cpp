@@ -145,7 +145,7 @@ void MyCentral::worker()
 				std::this_thread::sleep_for(sleepingTime);
 				if(_stopWorkerThread || _shuttingDown) return;
 				// Update devices (most importantly the IP address)
-				if(counter > countsPer10Minutes)
+				if(counter >= countsPer10Minutes)
 				{
 					countsPer10Minutes = 600;
 					counter = 0;
@@ -154,21 +154,24 @@ void MyCentral::worker()
 				}
 				if(counter % 60 == 0) //Once per minute
                 {
-				    std::lock_guard<std::mutex> peersGuard(_peersMutex);
-                    if(!_peersById.empty())
                     {
-                        auto nextPeer = _peersById.find(lastPeer);
-                        if(nextPeer != _peersById.end())
+                        std::lock_guard<std::mutex> peersGuard(_peersMutex);
+                        if(!_peersById.empty())
                         {
-                            nextPeer++;
-                            if(nextPeer == _peersById.end()) nextPeer = _peersById.begin();
+                            auto nextPeer = _peersById.find(lastPeer);
+                            if(nextPeer != _peersById.end())
+                            {
+                                nextPeer++;
+                                if(nextPeer == _peersById.end()) nextPeer = _peersById.begin();
+                            }
+                            else nextPeer = _peersById.begin();
+                            lastPeer = nextPeer->first;
                         }
-                        else nextPeer = _peersById.begin();
-                        lastPeer = nextPeer->first;
                     }
+
+                    auto peer = getPeer(lastPeer);
+                    if(peer && !peer->deleting) peer->worker();
                 }
-                auto peer = getPeer(lastPeer);
-                if(peer && !peer->deleting) peer->worker();
 				counter++;
 			}
 			catch(const std::exception& ex)
