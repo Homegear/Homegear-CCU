@@ -116,8 +116,8 @@ void MyCentral::worker()
 		std::chrono::milliseconds sleepingTime(1000);
 		uint32_t counter = 0;
 		uint32_t countsPer10Minutes = BaseLib::HelperFunctions::getRandomNumber(10, 600);
-        uint64_t lastPeer;
-        lastPeer = 0;
+        //uint64_t lastPeer;
+        //lastPeer = 0;
 
 		BaseLib::PVariable metadata = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
 		metadata->structValue->emplace("addNewInterfaces", std::make_shared<BaseLib::Variable>(false));
@@ -135,7 +135,7 @@ void MyCentral::worker()
 					counter = 0;
 					searchInterfaces(nullptr, metadata);
 				}
-				if(counter % 60 == 0) //Once per minute
+				/*if(counter % 60 == 0) //Once per minute
                 {
                     {
                         std::lock_guard<std::mutex> peersGuard(_peersMutex);
@@ -154,7 +154,7 @@ void MyCentral::worker()
 
                     auto peer = getPeer(lastPeer);
                     if(peer && !peer->deleting) peer->worker();
-                }
+                }*/
 				counter++;
 			}
 			catch(const std::exception& ex)

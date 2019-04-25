@@ -117,37 +117,6 @@ void MyPeer::homegearShuttingDown()
     }
 }
 
-void MyPeer::worker()
-{
-    try
-    {
-        if(_serialNumber == "BidCoS-RF") return;
-        _lastQueriedConfigChannel++;
-        auto functionsIterator = _rpcDevice->functions.find(_lastQueriedConfigChannel);
-        if(functionsIterator == _rpcDevice->functions.end())
-        {
-            _lastQueriedConfigChannel = 0;
-            functionsIterator = _rpcDevice->functions.find(_lastQueriedConfigChannel);
-        }
-        if(functionsIterator != _rpcDevice->functions.end() && !functionsIterator->second->configParameters->parameters.empty())
-        {
-            getParamset(BaseLib::PRpcClientInfo(), functionsIterator->first, BaseLib::DeviceDescription::ParameterGroup::Type::Enum::config, 0, -1, false);
-        }
-
-        for(auto& function : _rpcDevice->functions)
-        {
-            for(auto& parameter : function.second->variables->parameters)
-            {
-                getValueFromDevice(parameter.second, function.first, false);
-            }
-        }
-    }
-    catch(const std::exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-}
-
 std::string MyPeer::handleCliCommand(std::string command)
 {
     try
@@ -829,6 +798,29 @@ void MyPeer::sendPacket(PMyPacket packet, std::string responseId, int32_t delay)
     }
 }
 
+PVariable MyPeer::forceConfigUpdate(BaseLib::PRpcClientInfo clientInfo)
+{
+    try
+    {
+        for(auto& channel : _rpcDevice->functions)
+        {
+            getParamset(BaseLib::PRpcClientInfo(), channel.first, BaseLib::DeviceDescription::ParameterGroup::Type::Enum::config, 0, -1, false);
+        }
+
+        for(auto& channel : _rpcDevice->functions)
+        {
+            getParamset(BaseLib::PRpcClientInfo(), channel.first, BaseLib::DeviceDescription::ParameterGroup::Type::Enum::variables, 0, -1, false);
+        }
+
+        return std::make_shared<Variable>(VariableType::tVoid);
+    }
+    catch(const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    return Variable::createError(-32500, "Unknown application error. See error log for more details.");
+}
+
 PVariable MyPeer::setValue(BaseLib::PRpcClientInfo clientInfo, uint32_t channel, std::string valueKey, PVariable value, bool wait)
 {
     try
@@ -904,7 +896,7 @@ PVariable MyPeer::setValue(BaseLib::PRpcClientInfo clientInfo, uint32_t channel,
             raiseRPCEvent(clientInfo->initInterfaceId, _peerID, channel, address, valueKeys, values);
         }
 
-        return PVariable(new Variable(VariableType::tVoid));
+        return std::make_shared<Variable>(VariableType::tVoid);
     }
     catch(const std::exception& ex)
     {

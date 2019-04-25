@@ -86,9 +86,8 @@ public:
 	 */
     virtual void homegearShuttingDown();
 
-    void worker();
-
 	//RPC methods
+	virtual PVariable forceConfigUpdate(BaseLib::PRpcClientInfo clientInfo);
     virtual PVariable getDeviceInfo(BaseLib::PRpcClientInfo clientInfo, std::map<std::string, bool> fields);
     virtual PVariable getParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channel, ParameterGroup::Type::Enum type, uint64_t remoteID, int32_t remoteChannel, bool checkAcls);
 	virtual PVariable putParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channel, ParameterGroup::Type::Enum type, uint64_t remoteID, int32_t remoteChannel, PVariable variables, bool checkAcls, bool onlyPushing = false);
@@ -103,7 +102,6 @@ protected:
 	bool _shuttingDown = false;
 	std::shared_ptr<Ccu> _physicalInterface;
 	uint32_t _lastRssiDevice = 0;
-	int32_t _lastQueriedConfigChannel = -1;
 
 	virtual void loadVariables(BaseLib::Systems::ICentral* central, std::shared_ptr<BaseLib::Database::DataTable>& rows);
     virtual void saveVariables();
