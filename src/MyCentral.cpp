@@ -256,10 +256,10 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
                     std::string serialNumber = addressIterator->second->stringValue;
                     BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
                     if(serialNumber.find(':') != std::string::npos) continue;
-                    std::string name;
+                    std::unordered_map<int32_t, std::string> names;
                     auto deviceNameIterator = deviceNames.find(serialNumber);
-                    if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
-                    pairDevice((Ccu::RpcType)parameters->at(0)->integerValue, senderId, serialNumber, name);
+                    if(deviceNameIterator != deviceNames.end()) names = deviceNameIterator->second;
+                    pairDevice((Ccu::RpcType)parameters->at(0)->integerValue, senderId, serialNumber, names);
                 }
                 return true;
             }
@@ -286,7 +286,7 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
     return false;
 }
 
-void MyCentral::pairDevice(Ccu::RpcType rpcType, std::string& interfaceId, std::string& serialNumber, std::string& name)
+void MyCentral::pairDevice(Ccu::RpcType rpcType, std::string& interfaceId, std::string& serialNumber, std::unordered_map<int32_t, std::string>& names)
 {
     try
     {
@@ -331,7 +331,11 @@ void MyCentral::pairDevice(Ccu::RpcType rpcType, std::string& interfaceId, std::
             peer->initializeCentralConfig();
             peer->setPhysicalInterfaceId(interfaceId);
             peer->setRpcType(rpcType);
-            peer->setName(-1, name);
+
+            for(auto& name : names)
+            {
+                peer->setName(name.first, name.second);
+            }
         }
         else
         {
@@ -341,7 +345,10 @@ void MyCentral::pairDevice(Ccu::RpcType rpcType, std::string& interfaceId, std::
                 GD::out.printError("Error: RPC device could not be found anymore.");
                 return;
             }
-            if(peer->getName(-1) == "") peer->setName(-1, name);
+            for(auto& name : names)
+            {
+                if(peer->getName(name.first).empty()) peer->setName(name.first, name.second);
+            }
         }
 
         lockGuard.lock();
@@ -910,10 +917,10 @@ void MyCentral::searchDevicesThread()
                         BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
                         if(serialNumber.find(':') != std::string::npos) continue;
                         std::string interfaceId = interface->getID();
-                        std::string name;
+                        std::unordered_map<int32_t, std::string> names;
                         auto deviceNameIterator = deviceNames.find(serialNumber);
-                        if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
-                        pairDevice(Ccu::RpcType::bidcos, interfaceId, serialNumber, name);
+                        if(deviceNameIterator != deviceNames.end()) names = deviceNameIterator->second;
+                        pairDevice(Ccu::RpcType::bidcos, interfaceId, serialNumber, names);
                     }
                 }
             }
@@ -935,10 +942,10 @@ void MyCentral::searchDevicesThread()
                         BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
                         if(serialNumber.find(':') != std::string::npos) continue;
                         std::string interfaceId = interface->getID();
-                        std::string name;
+                        std::unordered_map<int32_t, std::string> names;
                         auto deviceNameIterator = deviceNames.find(serialNumber);
-                        if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
-                        pairDevice(Ccu::RpcType::hmip, interfaceId, serialNumber, name);
+                        if(deviceNameIterator != deviceNames.end()) names = deviceNameIterator->second;
+                        pairDevice(Ccu::RpcType::hmip, interfaceId, serialNumber, names);
                     }
                 }
             }
@@ -969,10 +976,10 @@ void MyCentral::searchDevicesThread()
                             BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
                             if(serialNumber.find(':') != std::string::npos) continue;
                             std::string interfaceId = interface->getID();
-                            std::string name;
+                            std::unordered_map<int32_t, std::string> names;
                             auto deviceNameIterator = deviceNames.find(serialNumber);
-                            if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
-                            pairDevice(Ccu::RpcType::wired, interfaceId, serialNumber, name);
+                            if(deviceNameIterator != deviceNames.end()) names = deviceNameIterator->second;
+                            pairDevice(Ccu::RpcType::wired, interfaceId, serialNumber, names);
                         }
                     }
                 }

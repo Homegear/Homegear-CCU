@@ -706,9 +706,9 @@ bool Ccu::regaReady()
     return false;
 }
 
-std::unordered_map<std::string, std::string> Ccu::getNames()
+std::unordered_map<std::string, std::unordered_map<int32_t, std::string>> Ccu::getNames()
 {
-    std::unordered_map<std::string, std::string> deviceNames;
+    std::unordered_map<std::string, std::unordered_map<int32_t, std::string>> deviceNames;
     try
     {
         BaseLib::Ansi ansi(true, false);
@@ -725,7 +725,23 @@ std::unordered_map<std::string, std::string> Ccu::getNames()
             if(addressIterator == nameElement->structValue->end() || nameIterator == nameElement->structValue->end()) continue;
 
             nameIterator->second->stringValue = ansi.toUtf8(nameIterator->second->stringValue);
-            deviceNames.emplace(addressIterator->second->stringValue, nameIterator->second->stringValue);
+            deviceNames[addressIterator->second->stringValue][-1] = nameIterator->second->stringValue;
+
+            auto channelsIterator = nameElement->structValue->find("Channels");
+            if(channelsIterator == nameElement->structValue->end()) continue;
+
+            for(auto& channelElement : *channelsIterator->second->structValue)
+            {
+                auto channelIterator = channelElement.second->structValue->find("Address");
+                auto channelNameIterator = channelElement.second->structValue->find("ChannelName");
+                if(channelIterator == channelElement.second->structValue->end() || channelNameIterator == channelElement.second->structValue->end()) continue;
+
+                auto addressPair = BaseLib::HelperFunctions::splitLast(channelIterator->second->stringValue, ':');
+                if(addressPair.second.empty()) continue;
+                int32_t channel = BaseLib::Math::getNumber(addressPair.second);
+
+                deviceNames[addressIterator->second->stringValue][channel] = channelNameIterator->second->stringValue;
+            }
         }
     }
     catch(const std::exception& ex)
