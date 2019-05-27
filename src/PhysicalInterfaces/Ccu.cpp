@@ -730,11 +730,11 @@ std::unordered_map<std::string, std::unordered_map<int32_t, std::string>> Ccu::g
             auto channelsIterator = nameElement->structValue->find("Channels");
             if(channelsIterator == nameElement->structValue->end()) continue;
 
-            for(auto& channelElement : *channelsIterator->second->structValue)
+            for(auto& channelElement : *channelsIterator->second->arrayValue)
             {
-                auto channelIterator = channelElement.second->structValue->find("Address");
-                auto channelNameIterator = channelElement.second->structValue->find("ChannelName");
-                if(channelIterator == channelElement.second->structValue->end() || channelNameIterator == channelElement.second->structValue->end()) continue;
+                auto channelIterator = channelElement->structValue->find("Address");
+                auto channelNameIterator = channelElement->structValue->find("ChannelName");
+                if(channelIterator == channelElement->structValue->end() || channelNameIterator == channelElement->structValue->end()) continue;
 
                 auto addressPair = BaseLib::HelperFunctions::splitLast(channelIterator->second->stringValue, ':');
                 if(addressPair.second.empty()) continue;
