@@ -165,9 +165,24 @@ void DescriptionCreator::addParameterSet(Ccu::RpcType rpcType, std::shared_ptr<C
         if(functionIterator == device->functions.end()) device->functions.emplace(channel == -1 ? 0 : channel, function);
         function->channel = channel == -1 ? 0 : channel;
         function->type = paramsetId->stringValue;
-        if(type == "VALUES") function->variablesId = "CCU_" + type + (channel == -1 ? "" : "_" + std::to_string(channel));
-        else if(type == "MASTER") function->configParametersId = "CCU_" + type + (channel == -1 ? "" : "_" + std::to_string(channel));
-        else if(type == "LINK") function->linkParametersId = "CCU_" + type + (channel == -1 ? "" : "_" + std::to_string(channel));
+
+        BaseLib::DeviceDescription::ParameterGroup* parameterGroup = nullptr;
+        if(type == "VALUES")
+        {
+            parameterGroup = function->variables.get();
+            function->variablesId = "CCU_" + type + (channel == -1 ? "" : "_" + std::to_string(channel));
+        }
+        else if(type == "MASTER")
+        {
+            parameterGroup = function->configParameters.get();
+            function->configParametersId = "CCU_" + type + (channel == -1 ? "" : "_" + std::to_string(channel));
+        }
+        else if(type == "LINK")
+        {
+            parameterGroup = function->linkParameters.get();
+            function->linkParametersId = "CCU_" + type + (channel == -1 ? "" : "_" + std::to_string(channel));
+        }
+        else return;
 
         for(auto& parameterDescription : *parametersetDescription->structValue)
         {
@@ -330,21 +345,8 @@ void DescriptionCreator::addParameterSet(Ccu::RpcType rpcType, std::shared_ptr<C
                 if(elementIterator != parameterDescription.second->structValue->end()) parameter->unit = elementIterator->second->stringValue;
             }
 
-            if(type == "VALUES")
-            {
-                function->variables->parametersOrdered.push_back(parameter);
-                function->variables->parameters[parameter->id] = parameter;
-            }
-            else if(type == "MASTER")
-            {
-                function->configParameters->parametersOrdered.push_back(parameter);
-                function->configParameters->parameters[parameter->id] = parameter;
-            }
-            else if(type == "LINK")
-            {
-                function->linkParameters->parametersOrdered.push_back(parameter);
-                function->linkParameters->parameters[parameter->id] = parameter;
-            }
+            parameterGroup->parametersOrdered.push_back(parameter);
+            parameterGroup->parameters[parameter->id] = parameter;
         }
     }
     catch(const std::exception& ex)
