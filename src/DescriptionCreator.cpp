@@ -186,7 +186,7 @@ void DescriptionCreator::addParameterSet(Ccu::RpcType rpcType, std::shared_ptr<C
 
         for(auto& parameterDescription : *parametersetDescription->structValue)
         {
-            PParameter parameter = std::make_shared<Parameter>(GD::bl, function->variables.get());
+            PParameter parameter = std::make_shared<Parameter>(GD::bl, parameterGroup);
             parameter->id = parameterDescription.first;
 
             parameter->casts.push_back(std::make_shared<BaseLib::DeviceDescription::ParameterCast::RpcBinary>(GD::bl));
