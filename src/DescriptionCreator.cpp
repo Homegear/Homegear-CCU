@@ -40,7 +40,7 @@ DescriptionCreator::PeerInfo DescriptionCreator::createDescription(Ccu::RpcType 
         auto descriptionIterator = description->structValue->find("VERSION");
         if(descriptionIterator != description->structValue->end()) device->version = descriptionIterator->second->integerValue;
 
-        PSupportedDevice supportedDevice = std::make_shared<SupportedDevice>(GD::bl, device.get());
+        PSupportedDevice supportedDevice = std::make_shared<SupportedDevice>(GD::bl);
         descriptionIterator = description->structValue->find("TYPE");
         if(descriptionIterator != description->structValue->end()) supportedDevice->id = descriptionIterator->second->stringValue;
         if(supportedDevice->id.empty()) supportedDevice->id = serialNumber;
@@ -166,20 +166,20 @@ void DescriptionCreator::addParameterSet(Ccu::RpcType rpcType, std::shared_ptr<C
         function->channel = channel == -1 ? 0 : channel;
         function->type = paramsetId->stringValue;
 
-        BaseLib::DeviceDescription::ParameterGroup* parameterGroup = nullptr;
+        BaseLib::DeviceDescription::PParameterGroup parameterGroup;
         if(type == "VALUES")
         {
-            parameterGroup = function->variables.get();
+            parameterGroup = function->variables;
             function->variablesId = "CCU_" + type + (channel == -1 ? "" : "_" + std::to_string(channel));
         }
         else if(type == "MASTER")
         {
-            parameterGroup = function->configParameters.get();
+            parameterGroup = function->configParameters;
             function->configParametersId = "CCU_" + type + (channel == -1 ? "" : "_" + std::to_string(channel));
         }
         else if(type == "LINK")
         {
-            parameterGroup = function->linkParameters.get();
+            parameterGroup = function->linkParameters;
             function->linkParametersId = "CCU_" + type + (channel == -1 ? "" : "_" + std::to_string(channel));
         }
         else return;
