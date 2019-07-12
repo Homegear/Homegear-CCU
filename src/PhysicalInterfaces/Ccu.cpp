@@ -740,7 +740,7 @@ std::unordered_map<std::string, std::unordered_map<int32_t, std::string>> Ccu::g
                 if(addressPair.second.empty()) continue;
                 int32_t channel = BaseLib::Math::getNumber(addressPair.second);
 
-                deviceNames[addressIterator->second->stringValue][channel] = channelNameIterator->second->stringValue;
+                deviceNames[addressIterator->second->stringValue][channel] = ansi.toUtf8(channelNameIterator->second->stringValue);
             }
         }
     }
