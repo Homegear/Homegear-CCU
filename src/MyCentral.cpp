@@ -30,6 +30,8 @@
 #include "MyCentral.h"
 #include "GD.h"
 
+#include <iomanip>
+
 namespace MyFamily {
 
 MyCentral::MyCentral(ICentralEventSink* eventHandler) : BaseLib::Systems::ICentral(MY_FAMILY_ID, GD::bl, eventHandler)
@@ -76,14 +78,6 @@ void MyCentral::dispose(bool wait)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
 }
 
 void MyCentral::init()
@@ -102,14 +96,6 @@ void MyCentral::init()
 	catch(const std::exception& ex)
 	{
 		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-	}
-	catch(BaseLib::Exception& ex)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-	}
-	catch(...)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
 	}
 }
 
@@ -130,8 +116,8 @@ void MyCentral::worker()
 		std::chrono::milliseconds sleepingTime(1000);
 		uint32_t counter = 0;
 		uint32_t countsPer10Minutes = BaseLib::HelperFunctions::getRandomNumber(10, 600);
-        uint64_t lastPeer;
-        lastPeer = 0;
+        //uint64_t lastPeer;
+        //lastPeer = 0;
 
 		BaseLib::PVariable metadata = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
 		metadata->structValue->emplace("addNewInterfaces", std::make_shared<BaseLib::Variable>(false));
@@ -143,57 +129,43 @@ void MyCentral::worker()
 				std::this_thread::sleep_for(sleepingTime);
 				if(_stopWorkerThread || _shuttingDown) return;
 				// Update devices (most importantly the IP address)
-				if(counter > countsPer10Minutes)
+				if(counter >= countsPer10Minutes)
 				{
 					countsPer10Minutes = 600;
 					counter = 0;
 					searchInterfaces(nullptr, metadata);
-
 				}
-				if(counter % 60 == 0) //Once per minute
+				/*if(counter % 60 == 0) //Once per minute
                 {
-				    std::lock_guard<std::mutex> peersGuard(_peersMutex);
-                    if(!_peersById.empty())
                     {
-                        auto nextPeer = _peersById.find(lastPeer);
-                        if(nextPeer != _peersById.end())
+                        std::lock_guard<std::mutex> peersGuard(_peersMutex);
+                        if(!_peersById.empty())
                         {
-                            nextPeer++;
-                            if(nextPeer == _peersById.end()) nextPeer = _peersById.begin();
+                            auto nextPeer = _peersById.find(lastPeer);
+                            if(nextPeer != _peersById.end())
+                            {
+                                nextPeer++;
+                                if(nextPeer == _peersById.end()) nextPeer = _peersById.begin();
+                            }
+                            else nextPeer = _peersById.begin();
+                            lastPeer = nextPeer->first;
                         }
-                        else nextPeer = _peersById.begin();
-                        lastPeer = nextPeer->first;
                     }
-                }
-                auto peer = getPeer(lastPeer);
-                if(peer && !peer->deleting) peer->worker();
+
+                    auto peer = getPeer(lastPeer);
+                    if(peer && !peer->deleting) peer->worker();
+                }*/
 				counter++;
 			}
 			catch(const std::exception& ex)
 			{
 				GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
 			}
-			catch(BaseLib::Exception& ex)
-			{
-				GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-			}
-			catch(...)
-			{
-				GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-			}
 		}
 	}
 	catch(const std::exception& ex)
 	{
 		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-	}
-	catch(BaseLib::Exception& ex)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-	}
-	catch(...)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
 	}
 }
 
@@ -218,14 +190,6 @@ void MyCentral::loadPeers()
     {
     	GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch(BaseLib::Exception& ex)
-    {
-    	GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-    	GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
 }
 
 std::shared_ptr<MyPeer> MyCentral::getPeer(uint64_t id)
@@ -242,14 +206,6 @@ std::shared_ptr<MyPeer> MyCentral::getPeer(uint64_t id)
 	catch(const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return std::shared_ptr<MyPeer>();
 }
@@ -269,14 +225,6 @@ std::shared_ptr<MyPeer> MyCentral::getPeer(std::string serialNumber)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
     return std::shared_ptr<MyPeer>();
 }
 
@@ -288,7 +236,7 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
 		PMyPacket myPacket(std::dynamic_pointer_cast<MyPacket>(packet));
 		if(!myPacket) return false;
 
-		if(_bl->debugLevel >= 4) std::cout << BaseLib::HelperFunctions::getTimeString(myPacket->timeReceived()) << " Packet received (" << senderId << "): Method name: " << myPacket->getMethodName() << std::endl;
+		if(_bl->debugLevel >= 4) _bl->out.printInfo(BaseLib::HelperFunctions::getTimeString(myPacket->getTimeReceived()) + " Packet received (" + senderId + "): Method name: " + myPacket->getMethodName());
 
         if(myPacket->getMethodName() == "newDevices")
         {
@@ -308,10 +256,10 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
                     std::string serialNumber = addressIterator->second->stringValue;
                     BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
                     if(serialNumber.find(':') != std::string::npos) continue;
-                    std::string name;
+                    std::unordered_map<int32_t, std::string> names;
                     auto deviceNameIterator = deviceNames.find(serialNumber);
-                    if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
-                    pairDevice((Ccu::RpcType)parameters->at(0)->integerValue, senderId, serialNumber, name);
+                    if(deviceNameIterator != deviceNames.end()) names = deviceNameIterator->second;
+                    pairDevice((Ccu::RpcType)parameters->at(0)->integerValue, senderId, serialNumber, names);
                 }
                 return true;
             }
@@ -335,18 +283,10 @@ bool MyCentral::onPacketReceived(std::string& senderId, std::shared_ptr<BaseLib:
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
     return false;
 }
 
-void MyCentral::pairDevice(Ccu::RpcType rpcType, std::string& interfaceId, std::string& serialNumber, std::string& name)
+void MyCentral::pairDevice(Ccu::RpcType rpcType, std::string& interfaceId, std::string& serialNumber, std::unordered_map<int32_t, std::string>& names)
 {
     try
     {
@@ -391,7 +331,11 @@ void MyCentral::pairDevice(Ccu::RpcType rpcType, std::string& interfaceId, std::
             peer->initializeCentralConfig();
             peer->setPhysicalInterfaceId(interfaceId);
             peer->setRpcType(rpcType);
-            peer->setName(-1, name);
+
+            for(auto& name : names)
+            {
+                peer->setName(name.first, name.second);
+            }
         }
         else
         {
@@ -401,7 +345,10 @@ void MyCentral::pairDevice(Ccu::RpcType rpcType, std::string& interfaceId, std::
                 GD::out.printError("Error: RPC device could not be found anymore.");
                 return;
             }
-            if(peer->getName(-1) == "") peer->setName(-1, name);
+            for(auto& name : names)
+            {
+                if(peer->getName(name.first).empty()) peer->setName(name.first, name.second);
+            }
         }
 
         lockGuard.lock();
@@ -434,14 +381,6 @@ void MyCentral::pairDevice(Ccu::RpcType rpcType, std::string& interfaceId, std::
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
 }
 
 void MyCentral::savePeers(bool full)
@@ -458,14 +397,6 @@ void MyCentral::savePeers(bool full)
 	catch(const std::exception& ex)
     {
     	GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-    	GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-    	GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
 }
 
@@ -514,14 +445,6 @@ void MyCentral::deletePeer(uint64_t id)
 	catch(const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
 }
 
@@ -781,16 +704,6 @@ std::string MyCentral::handleCliCommand(std::string command)
 				_peersMutex.unlock();
 				GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
 			}
-			catch(BaseLib::Exception& ex)
-			{
-				_peersMutex.unlock();
-				GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-			}
-			catch(...)
-			{
-				_peersMutex.unlock();
-				GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-			}
 		}
 		else if(command.compare(0, 13, "peers setname") == 0 || command.compare(0, 2, "pn") == 0)
 		{
@@ -846,14 +759,6 @@ std::string MyCentral::handleCliCommand(std::string command)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
     return "Error executing command. See log file for more details.\n";
 }
 
@@ -872,14 +777,6 @@ std::shared_ptr<MyPeer> MyCentral::createPeer(uint32_t deviceType, int32_t firmw
     catch(const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return std::shared_ptr<MyPeer>();
 }
@@ -900,14 +797,6 @@ PVariable MyCentral::deleteDevice(BaseLib::PRpcClientInfo clientInfo, std::strin
 	catch(const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return Variable::createError(-32500, "Unknown application error.");
 }
@@ -943,14 +832,6 @@ PVariable MyCentral::deleteDevice(BaseLib::PRpcClientInfo clientInfo, uint64_t p
 	catch(const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return Variable::createError(-32500, "Unknown application error.");
 }
@@ -1002,14 +883,6 @@ PVariable MyCentral::getServiceMessages(PRpcClientInfo clientInfo, bool returnId
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
     return Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -1044,10 +917,10 @@ void MyCentral::searchDevicesThread()
                         BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
                         if(serialNumber.find(':') != std::string::npos) continue;
                         std::string interfaceId = interface->getID();
-                        std::string name;
+                        std::unordered_map<int32_t, std::string> names;
                         auto deviceNameIterator = deviceNames.find(serialNumber);
-                        if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
-                        pairDevice(Ccu::RpcType::bidcos, interfaceId, serialNumber, name);
+                        if(deviceNameIterator != deviceNames.end()) names = deviceNameIterator->second;
+                        pairDevice(Ccu::RpcType::bidcos, interfaceId, serialNumber, names);
                     }
                 }
             }
@@ -1069,10 +942,10 @@ void MyCentral::searchDevicesThread()
                         BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
                         if(serialNumber.find(':') != std::string::npos) continue;
                         std::string interfaceId = interface->getID();
-                        std::string name;
+                        std::unordered_map<int32_t, std::string> names;
                         auto deviceNameIterator = deviceNames.find(serialNumber);
-                        if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
-                        pairDevice(Ccu::RpcType::hmip, interfaceId, serialNumber, name);
+                        if(deviceNameIterator != deviceNames.end()) names = deviceNameIterator->second;
+                        pairDevice(Ccu::RpcType::hmip, interfaceId, serialNumber, names);
                     }
                 }
             }
@@ -1103,10 +976,10 @@ void MyCentral::searchDevicesThread()
                             BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
                             if(serialNumber.find(':') != std::string::npos) continue;
                             std::string interfaceId = interface->getID();
-                            std::string name;
+                            std::unordered_map<int32_t, std::string> names;
                             auto deviceNameIterator = deviceNames.find(serialNumber);
-                            if(deviceNameIterator != deviceNames.end()) name = deviceNameIterator->second;
-                            pairDevice(Ccu::RpcType::wired, interfaceId, serialNumber, name);
+                            if(deviceNameIterator != deviceNames.end()) names = deviceNameIterator->second;
+                            pairDevice(Ccu::RpcType::wired, interfaceId, serialNumber, names);
                         }
                     }
                 }
@@ -1117,22 +990,71 @@ void MyCentral::searchDevicesThread()
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
     _searching = false;
+}
+
+PVariable MyCentral::getPairingState(BaseLib::PRpcClientInfo clientInfo)
+{
+	try
+	{
+		auto states = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+
+		states->structValue->emplace("pairingModeEnabled", std::make_shared<BaseLib::Variable>(_searching));
+		states->structValue->emplace("pairingModeEndTime", std::make_shared<BaseLib::Variable>(-1));
+
+		{
+			std::lock_guard<std::mutex> newPeersGuard(_newPeersMutex);
+
+			auto pairingMessages = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tArray);
+			pairingMessages->arrayValue->reserve(_pairingMessages.size());
+			for(auto& message : _pairingMessages)
+			{
+				auto pairingMessage = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+				pairingMessage->structValue->emplace("messageId", std::make_shared<BaseLib::Variable>(message->messageId));
+				auto variables = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tArray);
+				variables->arrayValue->reserve(message->variables.size());
+				for(auto& variable : message->variables)
+				{
+					variables->arrayValue->emplace_back(std::make_shared<BaseLib::Variable>(variable));
+				}
+				pairingMessage->structValue->emplace("variables", variables);
+				pairingMessages->arrayValue->push_back(pairingMessage);
+			}
+			states->structValue->emplace("general", std::move(pairingMessages));
+
+			for(auto& element : _newPeers)
+			{
+				for(auto& peer : element.second)
+				{
+					auto peerState = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+					peerState->structValue->emplace("state", std::make_shared<BaseLib::Variable>(peer->state));
+					peerState->structValue->emplace("messageId", std::make_shared<BaseLib::Variable>(peer->messageId));
+					auto variables = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tArray);
+					variables->arrayValue->reserve(peer->variables.size());
+					for(auto& variable : peer->variables)
+					{
+						variables->arrayValue->emplace_back(std::make_shared<BaseLib::Variable>(variable));
+					}
+					peerState->structValue->emplace("variables", variables);
+					states->structValue->emplace(std::to_string(peer->peerId), std::move(peerState));
+				}
+			}
+		}
+
+		return states;
+	}
+	catch(const std::exception& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	return Variable::createError(-32500, "Unknown application error.");
 }
 
 PVariable MyCentral::searchDevices(BaseLib::PRpcClientInfo clientInfo)
 {
 	try
 	{
-        if(_searching) return std::make_shared<BaseLib::Variable>(0);
+        if(_searching) return std::make_shared<BaseLib::Variable>(-3);
         _searching = true;
         std::lock_guard<std::mutex> searchDevicesGuard(_searchDevicesThreadMutex);
         _bl->threadManager.start(_searchDevicesThread, false, &MyCentral::searchDevicesThread, this);
@@ -1141,14 +1063,6 @@ PVariable MyCentral::searchDevices(BaseLib::PRpcClientInfo clientInfo)
 	catch(const std::exception& ex)
 	{
 		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-	}
-	catch(BaseLib::Exception& ex)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-	}
-	catch(...)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
 	}
 	return Variable::createError(-32500, "Unknown application error.");
 }
@@ -1340,14 +1254,6 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
                 {
                     _bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
                 }
-                catch(Exception& ex)
-                {
-                    _bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-                }
-                catch(...)
-                {
-                    _bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-                }
             }
 
             _bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
@@ -1361,14 +1267,6 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
 	catch(const std::exception& ex)
 	{
 		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-	}
-	catch(BaseLib::Exception& ex)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-	}
-	catch(...)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
 	}
 	_bl->fileDescriptorManager.shutdown(serverSocketDescriptor);
 	return Variable::createError(-32500, "Unknown application error.");
@@ -1396,14 +1294,6 @@ void MyCentral::pairingModeTimer(int32_t duration, bool debugOutput)
     catch(const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
 }
 
@@ -1487,14 +1377,6 @@ std::shared_ptr<Variable> MyCentral::setInstallMode(BaseLib::PRpcClientInfo clie
     catch(const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return Variable::createError(-32500, "Unknown application error.");
 }
