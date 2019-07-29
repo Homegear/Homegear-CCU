@@ -999,8 +999,8 @@ PVariable MyCentral::getPairingState(BaseLib::PRpcClientInfo clientInfo)
 	{
 		auto states = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
 
-		states->structValue->emplace("pairingModeEnabled", std::make_shared<BaseLib::Variable>(_searching));
-		states->structValue->emplace("pairingModeEndTime", std::make_shared<BaseLib::Variable>(-1));
+		states->structValue->emplace("pairingModeEnabled", std::make_shared<BaseLib::Variable>(_timeLeftInPairingMode != 0));
+		states->structValue->emplace("pairingModeEndTime", std::make_shared<BaseLib::Variable>(BaseLib::HelperFunctions::getTimeSeconds() + _timeLeftInPairingMode));
 
 		{
 			std::lock_guard<std::mutex> newPeersGuard(_newPeersMutex);
