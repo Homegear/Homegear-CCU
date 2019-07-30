@@ -40,7 +40,7 @@ DescriptionCreator::PeerInfo DescriptionCreator::createDescription(Ccu::RpcType 
         auto descriptionIterator = description->structValue->find("VERSION");
         if(descriptionIterator != description->structValue->end()) device->version = descriptionIterator->second->integerValue;
 
-        PSupportedDevice supportedDevice = std::make_shared<SupportedDevice>(GD::bl, device.get());
+        PSupportedDevice supportedDevice = std::make_shared<SupportedDevice>(GD::bl);
         descriptionIterator = description->structValue->find("TYPE");
         if(descriptionIterator != description->structValue->end()) supportedDevice->id = descriptionIterator->second->stringValue;
         if(supportedDevice->id.empty()) supportedDevice->id = serialNumber;
@@ -91,15 +91,6 @@ DescriptionCreator::PeerInfo DescriptionCreator::createDescription(Ccu::RpcType 
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
-
     return PeerInfo();
 }
 
@@ -121,33 +112,25 @@ void DescriptionCreator::createDirectories()
         if(!BaseLib::Io::directoryExists(path1)) BaseLib::Io::createDirectory(path1, GD::bl->settings.dataPathPermissions());
         if(localUserId != 0 || localGroupId != 0)
         {
-            if(chown(path1.c_str(), localUserId, localGroupId) == -1) std::cerr << "Could not set owner on " << path1 << std::endl;
-            if(chmod(path1.c_str(), GD::bl->settings.dataPathPermissions()) == -1) std::cerr << "Could not set permissions on " << path1 << std::endl;
+            if(chown(path1.c_str(), localUserId, localGroupId) == -1) GD::out.printWarning("Could not set owner on " + path1);
+            if(chmod(path1.c_str(), GD::bl->settings.dataPathPermissions()) == -1) GD::out.printWarning("Could not set permissions on " + path1);
         }
         if(!BaseLib::Io::directoryExists(path2)) BaseLib::Io::createDirectory(path2, GD::bl->settings.dataPathPermissions());
         if(localUserId != 0 || localGroupId != 0)
         {
-            if(chown(path2.c_str(), localUserId, localGroupId) == -1) std::cerr << "Could not set owner on " << path2 << std::endl;
-            if(chmod(path2.c_str(), GD::bl->settings.dataPathPermissions()) == -1) std::cerr << "Could not set permissions on " << path2 << std::endl;
+            if(chown(path2.c_str(), localUserId, localGroupId) == -1) GD::out.printWarning("Could not set owner on " + path2);
+            if(chmod(path2.c_str(), GD::bl->settings.dataPathPermissions()) == -1) GD::out.printWarning("Could not set permissions on " + path2);
         }
         if(!BaseLib::Io::directoryExists(_xmlPath)) BaseLib::Io::createDirectory(_xmlPath, GD::bl->settings.dataPathPermissions());
         if(localUserId != 0 || localGroupId != 0)
         {
-            if(chown(_xmlPath.c_str(), localUserId, localGroupId) == -1) std::cerr << "Could not set owner on " << _xmlPath << std::endl;
-            if(chmod(_xmlPath.c_str(), GD::bl->settings.dataPathPermissions()) == -1) std::cerr << "Could not set permissions on " << _xmlPath << std::endl;
+            if(chown(_xmlPath.c_str(), localUserId, localGroupId) == -1) GD::out.printWarning("Could not set owner on " + _xmlPath);
+            if(chmod(_xmlPath.c_str(), GD::bl->settings.dataPathPermissions()) == -1) GD::out.printWarning("Could not set permissions on " + _xmlPath);
         }
     }
     catch(const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
 }
 
@@ -182,13 +165,28 @@ void DescriptionCreator::addParameterSet(Ccu::RpcType rpcType, std::shared_ptr<C
         if(functionIterator == device->functions.end()) device->functions.emplace(channel == -1 ? 0 : channel, function);
         function->channel = channel == -1 ? 0 : channel;
         function->type = paramsetId->stringValue;
-        if(type == "VALUES") function->variablesId = "CCU_" + type + (channel == -1 ? "" : "_" + std::to_string(channel));
-        else if(type == "MASTER") function->configParametersId = "CCU_" + type + (channel == -1 ? "" : "_" + std::to_string(channel));
-        else if(type == "LINK") function->linkParametersId = "CCU_" + type + (channel == -1 ? "" : "_" + std::to_string(channel));
+
+        BaseLib::DeviceDescription::PParameterGroup parameterGroup;
+        if(type == "VALUES")
+        {
+            parameterGroup = function->variables;
+            function->variablesId = "CCU_" + type + (channel == -1 ? "" : "_" + std::to_string(channel));
+        }
+        else if(type == "MASTER")
+        {
+            parameterGroup = function->configParameters;
+            function->configParametersId = "CCU_" + type + (channel == -1 ? "" : "_" + std::to_string(channel));
+        }
+        else if(type == "LINK")
+        {
+            parameterGroup = function->linkParameters;
+            function->linkParametersId = "CCU_" + type + (channel == -1 ? "" : "_" + std::to_string(channel));
+        }
+        else return;
 
         for(auto& parameterDescription : *parametersetDescription->structValue)
         {
-            PParameter parameter = std::make_shared<Parameter>(GD::bl, function->variables.get());
+            PParameter parameter = std::make_shared<Parameter>(GD::bl, parameterGroup);
             parameter->id = parameterDescription.first;
 
             parameter->casts.push_back(std::make_shared<BaseLib::DeviceDescription::ParameterCast::RpcBinary>(GD::bl));
@@ -347,34 +345,13 @@ void DescriptionCreator::addParameterSet(Ccu::RpcType rpcType, std::shared_ptr<C
                 if(elementIterator != parameterDescription.second->structValue->end()) parameter->unit = elementIterator->second->stringValue;
             }
 
-            if(type == "VALUES")
-            {
-                function->variables->parametersOrdered.push_back(parameter);
-                function->variables->parameters[parameter->id] = parameter;
-            }
-            else if(type == "MASTER")
-            {
-                function->configParameters->parametersOrdered.push_back(parameter);
-                function->configParameters->parameters[parameter->id] = parameter;
-            }
-            else if(type == "LINK")
-            {
-                function->linkParameters->parametersOrdered.push_back(parameter);
-                function->linkParameters->parameters[parameter->id] = parameter;
-            }
+            parameterGroup->parametersOrdered.push_back(parameter);
+            parameterGroup->parameters[parameter->id] = parameter;
         }
     }
     catch(const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
 }
 

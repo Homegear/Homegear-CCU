@@ -130,16 +130,6 @@ void Ccu::init()
                 _bidcosReInit = true;
                 _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
             }
-            catch(BaseLib::Exception& ex)
-            {
-                _bidcosReInit = true;
-                _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-            }
-            catch(...)
-            {
-                _bidcosReInit = true;
-                _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-            }
         }
 
         if(_hmipClient)
@@ -162,16 +152,6 @@ void Ccu::init()
             {
                 _hmipReInit = true;
                 _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-            }
-            catch(BaseLib::Exception& ex)
-            {
-                _hmipReInit = true;
-                _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-            }
-            catch(...)
-            {
-                _hmipReInit = true;
-                _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
             }
         }
 
@@ -205,16 +185,6 @@ void Ccu::init()
                 _wiredReInit.store(true, std::memory_order_release);
                 _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
             }
-            catch(BaseLib::Exception& ex)
-            {
-                _wiredReInit.store(true, std::memory_order_release);
-                _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-            }
-            catch(...)
-            {
-                _wiredReInit.store(true, std::memory_order_release);
-                _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-            }
         }
 
         if(!_bidcosReInit.load(std::memory_order_acquire) && !_hmipReInit.load(std::memory_order_acquire) && !_wiredReInit.load(std::memory_order_acquire)) _out.printInfo("Info: Init complete.");
@@ -222,14 +192,6 @@ void Ccu::init()
     catch(const std::exception& ex)
     {
         _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
 }
 
@@ -268,14 +230,6 @@ void Ccu::deinit()
     catch(const std::exception& ex)
     {
         _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
 }
 
@@ -374,14 +328,6 @@ void Ccu::startListening()
     {
         _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch(BaseLib::Exception& ex)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
 }
 
 void Ccu::stopListening()
@@ -407,14 +353,6 @@ void Ccu::stopListening()
     {
         _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch(BaseLib::Exception& ex)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
 }
 
 void Ccu::newConnection(int32_t clientId, std::string address, uint16_t port)
@@ -432,14 +370,6 @@ void Ccu::newConnection(int32_t clientId, std::string address, uint16_t port)
     {
         _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch(BaseLib::Exception& ex)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
 }
 
 void Ccu::connectionClosed(int32_t clientId)
@@ -454,14 +384,6 @@ void Ccu::connectionClosed(int32_t clientId)
     catch(const std::exception& ex)
     {
         _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
 }
 
@@ -507,7 +429,7 @@ void Ccu::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet)
         }
         catch(BaseLib::Rpc::BinaryRpcException& ex)
         {
-            _out.printError("Error processing packet (1): " + ex.what());
+            _out.printError("Error processing packet (1): " + std::string(ex.what()));
         }
         return;
     }
@@ -515,15 +437,6 @@ void Ccu::packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet)
     {
         _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch(BaseLib::Exception& ex)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what() + " Packet was: " + BaseLib::HelperFunctions::getHexString(packet));
-    }
-    catch(...)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
-
     http->reset();
 }
 
@@ -630,14 +543,6 @@ void Ccu::processPacket(int32_t clientId, std::string& methodName, BaseLib::PArr
     {
         _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch(BaseLib::Exception& ex)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
 }
 
 void Ccu::ping()
@@ -728,14 +633,6 @@ void Ccu::ping()
     {
         _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch(BaseLib::Exception& ex)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
 }
 
 BaseLib::PVariable Ccu::invoke(Ccu::RpcType rpcType, std::string methodName, BaseLib::PArray parameters)
@@ -770,7 +667,7 @@ BaseLib::PVariable Ccu::invoke(Ccu::RpcType rpcType, std::string methodName, Bas
 
             if(GD::bl->debugLevel >= 5) GD::out.printDebug("Debug: Response was (" + std::to_string((int)rpcType) + ") " + std::string(httpResponse.getContent().data(), httpResponse.getContentSize()));
         }
-        catch(BaseLib::Exception& ex)
+        catch(const std::exception& ex)
         {
             if(rpcType == RpcType::wired && methodName == "init") return BaseLib::Variable::createError(400, "Bad Request");
             else return BaseLib::Variable::createError(-1, ex.what());
@@ -779,17 +676,9 @@ BaseLib::PVariable Ccu::invoke(Ccu::RpcType rpcType, std::string methodName, Bas
         if(httpResponse.getHeader().responseCode == 400 || httpResponse.getHeader().responseCode == 503) return BaseLib::Variable::createError(400, "Bad Request");
         else return _xmlrpcDecoder->decodeResponse(httpResponse.getContent());
     }
-    catch(BaseLib::Exception& ex)
-    {
-        return BaseLib::Variable::createError(-32500, ex.what());
-    }
     catch(const std::exception& ex)
     {
         return BaseLib::Variable::createError(-32500, ex.what());
-    }
-    catch(...)
-    {
-        return BaseLib::Variable::createError(-32500, "Unknown application error.");
     }
 }
 
@@ -814,20 +703,12 @@ bool Ccu::regaReady()
     {
         _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch(BaseLib::Exception& ex)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
     return false;
 }
 
-std::unordered_map<std::string, std::string> Ccu::getNames()
+std::unordered_map<std::string, std::unordered_map<int32_t, std::string>> Ccu::getNames()
 {
-    std::unordered_map<std::string, std::string> deviceNames;
+    std::unordered_map<std::string, std::unordered_map<int32_t, std::string>> deviceNames;
     try
     {
         BaseLib::Ansi ansi(true, false);
@@ -844,20 +725,28 @@ std::unordered_map<std::string, std::string> Ccu::getNames()
             if(addressIterator == nameElement->structValue->end() || nameIterator == nameElement->structValue->end()) continue;
 
             nameIterator->second->stringValue = ansi.toUtf8(nameIterator->second->stringValue);
-            deviceNames.emplace(addressIterator->second->stringValue, nameIterator->second->stringValue);
+            deviceNames[addressIterator->second->stringValue][-1] = nameIterator->second->stringValue;
+
+            auto channelsIterator = nameElement->structValue->find("Channels");
+            if(channelsIterator == nameElement->structValue->end()) continue;
+
+            for(auto& channelElement : *channelsIterator->second->arrayValue)
+            {
+                auto channelIterator = channelElement->structValue->find("Address");
+                auto channelNameIterator = channelElement->structValue->find("ChannelName");
+                if(channelIterator == channelElement->structValue->end() || channelNameIterator == channelElement->structValue->end()) continue;
+
+                auto addressPair = BaseLib::HelperFunctions::splitLast(channelIterator->second->stringValue, ':');
+                if(addressPair.second.empty()) continue;
+                int32_t channel = BaseLib::Math::getNumber(addressPair.second);
+
+                deviceNames[addressIterator->second->stringValue][channel] = ansi.toUtf8(channelNameIterator->second->stringValue);
+            }
         }
     }
     catch(const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return deviceNames;
 }
@@ -904,14 +793,6 @@ void Ccu::getCcuServiceMessages()
     catch(const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
 }
 
