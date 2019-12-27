@@ -999,8 +999,8 @@ PVariable MyCentral::getPairingState(BaseLib::PRpcClientInfo clientInfo)
 	{
 		auto states = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
 
-		states->structValue->emplace("pairingModeEnabled", std::make_shared<BaseLib::Variable>(_searching));
-		states->structValue->emplace("pairingModeEndTime", std::make_shared<BaseLib::Variable>(-1));
+		states->structValue->emplace("pairingModeEnabled", std::make_shared<BaseLib::Variable>(_timeLeftInPairingMode != 0));
+		states->structValue->emplace("pairingModeEndTime", std::make_shared<BaseLib::Variable>(BaseLib::HelperFunctions::getTimeSeconds() + _timeLeftInPairingMode));
 
 		{
 			std::lock_guard<std::mutex> newPeersGuard(_newPeersMutex);
@@ -1113,7 +1113,7 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
             localSock.sin_port = 0;
             localSock.sin_addr.s_addr = inet_addr("239.255.255.250");
 
-            if(bind(serverSocketDescriptor->descriptor, (struct sockaddr*)&localSock, sizeof(localSock)) == -1)
+            if(bind(serverSocketDescriptor->descriptor.load(), (struct sockaddr*)&localSock, sizeof(localSock)) == -1)
             {
                 _bl->out.printError("Error: Binding failed: " + std::string(strerror(errno)));
                 _bl->fileDescriptorManager.close(serverSocketDescriptor);

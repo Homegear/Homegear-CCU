@@ -65,7 +65,7 @@ public:
 	virtual PVariable getServiceMessages(PRpcClientInfo clientInfo, bool returnId, bool checkAcls);
 	virtual PVariable searchDevices(BaseLib::PRpcClientInfo clientInfo);
 	virtual PVariable searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLib::PVariable metadata);
-    virtual PVariable setInstallMode(BaseLib::PRpcClientInfo clientInfo, bool on, uint32_t duration, BaseLib::PVariable metadata, bool debugOutput = true);
+    PVariable setInstallMode(BaseLib::PRpcClientInfo clientInfo, bool on, uint32_t duration, BaseLib::PVariable metadata, bool debugOutput) override;
 protected:
 	std::atomic_bool _shuttingDown;
 	std::atomic_bool _stopWorkerThread;
