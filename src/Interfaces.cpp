@@ -118,7 +118,7 @@ std::shared_ptr<Ccu> Interfaces::getInterface(std::string& name)
 std::shared_ptr<Ccu> Interfaces::getInterfaceByIp(std::string& ipAddress)
 {
     std::lock_guard<std::mutex> interfaceGuard(_physicalInterfacesMutex);
-    for(auto interfaceBase : _physicalInterfaces)
+    for(auto& interfaceBase : _physicalInterfaces)
     {
         std::shared_ptr<Ccu> interface(std::dynamic_pointer_cast<Ccu>(interfaceBase.second));
         if(!interface) continue;
@@ -130,7 +130,7 @@ std::shared_ptr<Ccu> Interfaces::getInterfaceByIp(std::string& ipAddress)
 std::shared_ptr<Ccu> Interfaces::getInterfaceBySerial(std::string& serial)
 {
     std::lock_guard<std::mutex> interfaceGuard(_physicalInterfacesMutex);
-    for(auto interfaceBase : _physicalInterfaces)
+    for(auto& interfaceBase : _physicalInterfaces)
     {
         std::shared_ptr<Ccu> interface(std::dynamic_pointer_cast<Ccu>(interfaceBase.second));
         if(!interface) continue;
@@ -145,7 +145,7 @@ void Interfaces::removeUnknownInterfaces(std::set<std::string>& knownInterfaces)
     {
         std::vector<std::string> interfacesToDelete;
         std::lock_guard<std::mutex> interfaceGuard(_physicalInterfacesMutex);
-        for(auto interfaceBase : _physicalInterfaces)
+        for(auto& interfaceBase : _physicalInterfaces)
         {
             std::shared_ptr<Ccu> interface(std::dynamic_pointer_cast<Ccu>(interfaceBase.second));
             if(!interface) continue;
@@ -169,7 +169,7 @@ void Interfaces::removeUnknownInterfaces(std::set<std::string>& knownInterfaces)
             }
         }
 
-        for(auto interface : interfacesToDelete)
+        for(auto& interface : interfacesToDelete)
         {
             _physicalInterfaces.erase(interface);
         }
@@ -227,7 +227,7 @@ void Interfaces::create()
 {
     try
     {
-        for(auto settings : _physicalInterfaceSettings)
+        for(auto& settings : _physicalInterfaceSettings)
         {
             if(settings.second->host.empty()) continue;
             addInterface(settings.second, false);
