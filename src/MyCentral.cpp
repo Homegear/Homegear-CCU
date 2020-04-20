@@ -494,7 +494,7 @@ std::string MyCentral::handleCliCommand(std::string command)
                 return stringStream.str();
             }
 
-            searchDevicesThread();
+            searchDevicesThread("");
 
             stringStream << "Search completed." << std::endl;
             return stringStream.str();
@@ -886,13 +886,14 @@ PVariable MyCentral::getServiceMessages(PRpcClientInfo clientInfo, bool returnId
     return Variable::createError(-32500, "Unknown application error.");
 }
 
-void MyCentral::searchDevicesThread()
+void MyCentral::searchDevicesThread(std::string interfaceId)
 {
     try
     {
         auto interfaces = GD::interfaces->getInterfaces();
         for(auto& interface : interfaces)
         {
+            if(!interfaceId.empty() && interface->getID() != interfaceId) continue;
         	GD::out.printInfo("Info: Searching for devices on CCU with serial number " + interface->getSerialNumber());
 
             auto deviceNames = interface->getNames();
@@ -1050,14 +1051,14 @@ PVariable MyCentral::getPairingState(BaseLib::PRpcClientInfo clientInfo)
 	return Variable::createError(-32500, "Unknown application error.");
 }
 
-PVariable MyCentral::searchDevices(BaseLib::PRpcClientInfo clientInfo)
+PVariable MyCentral::searchDevices(BaseLib::PRpcClientInfo clientInfo, const std::string& interfaceId)
 {
 	try
 	{
         if(_searching) return std::make_shared<BaseLib::Variable>(-3);
         _searching = true;
         std::lock_guard<std::mutex> searchDevicesGuard(_searchDevicesThreadMutex);
-        _bl->threadManager.start(_searchDevicesThread, false, &MyCentral::searchDevicesThread, this);
+        _bl->threadManager.start(_searchDevicesThread, false, &MyCentral::searchDevicesThread, this, interfaceId);
         return std::make_shared<BaseLib::Variable>(-2);
 	}
 	catch(const std::exception& ex)
