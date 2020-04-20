@@ -107,8 +107,16 @@ PVariable MyFamily::getPairingInfo()
         //}}}
 
         //{{{ Pairing methods
-            PVariable pairingMethods = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
-            pairingMethods->structValue->emplace("searchDevices", std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct));
+            ///{{{ searchDevices
+                PVariable searchDevicesMetadata = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+                PVariable searchDevicesMetadataInfo = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+
+                searchDevicesMetadataInfo->structValue->emplace("interfaceSelector", std::make_shared<BaseLib::Variable>(true));
+                searchDevicesMetadata->structValue->emplace("metadataInfo", searchDevicesMetadataInfo);
+
+                PVariable pairingMethods = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+                pairingMethods->structValue->emplace("searchDevices", searchDevicesMetadata);
+            //}}}
 
             //{{{ setInstallMode
                 PVariable setInstallModeMetadata = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
