@@ -63,7 +63,7 @@ public:
 	virtual PVariable deleteDevice(BaseLib::PRpcClientInfo clientInfo, uint64_t peerId, int32_t flags);
 	virtual PVariable getPairingState(BaseLib::PRpcClientInfo clientInfo);
 	virtual PVariable getServiceMessages(PRpcClientInfo clientInfo, bool returnId, bool checkAcls);
-	virtual PVariable searchDevices(BaseLib::PRpcClientInfo clientInfo);
+	virtual PVariable searchDevices(BaseLib::PRpcClientInfo clientInfo, const std::string& interfaceId);
 	virtual PVariable searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLib::PVariable metadata);
     PVariable setInstallMode(BaseLib::PRpcClientInfo clientInfo, bool on, uint32_t duration, BaseLib::PVariable metadata, bool debugOutput) override;
 protected:
@@ -92,7 +92,7 @@ protected:
 
     void pairingModeTimer(int32_t duration, bool debugOutput = true);
     void pairDevice(Ccu::RpcType rpcType, std::string& interfaceId, std::string& serialNumber, std::unordered_map<int32_t, std::string>& names);
-	void searchDevicesThread();
+	void searchDevicesThread(std::string interfaceId);
 };
 
 }
