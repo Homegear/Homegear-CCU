@@ -646,12 +646,13 @@ BaseLib::PVariable Ccu::invoke(Ccu::RpcType rpcType, std::string methodName, Bas
 
         std::lock_guard<std::mutex> invokeGuard(_invokeMutex);
 
+        std::string path = _port == 9292 ? "/groups" : "/";
         std::string data;
         std::vector<char> xmlData;
         _xmlrpcEncoder->encodeRequest(methodName, parameters, xmlData);
         xmlData.push_back('\r');
         xmlData.push_back('\n');
-        std::string header = "POST / HTTP/1.1\r\nUser-Agent: homegear-ccu\r\nHost: " + _ipAddress + ":" + std::to_string(_port2) + "\r\nContent-Type: text/xml\r\nContent-Length: " + std::to_string(xmlData.size()) + "\r\nConnection: Keep-Alive\r\n\r\n";
+        std::string header = "POST " + path + " HTTP/1.1\r\nUser-Agent: homegear-ccu\r\nHost: " + _ipAddress + ":" + std::to_string(_port2) + "\r\nContent-Type: text/xml\r\nContent-Length: " + std::to_string(xmlData.size()) + "\r\nConnection: Keep-Alive\r\n\r\n";
         data.reserve(header.size() + xmlData.size());
         data.insert(data.end(), header.begin(), header.end());
         data.insert(data.end(), xmlData.begin(), xmlData.end());
