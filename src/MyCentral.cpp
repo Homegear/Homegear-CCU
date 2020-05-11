@@ -1222,6 +1222,7 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
                                             settings->port = interface->getPort1();
                                             settings->port2 = interface->getPort2();
                                             settings->port3 = interface->getPort3();
+                                            settings->port4 = interface->getPort4();
                                         }
                                         else if(addNewInterfaces)
                                         {
@@ -1231,6 +1232,7 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
                                             settings->port = "2001";
                                             settings->port2 = "2010";
                                             settings->port3 = "2000";
+                                            settings->port4 = "9292";
                                         }
 
 										if(interface || addNewInterfaces)

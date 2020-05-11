@@ -386,7 +386,7 @@ void MyPeer::setRssiDevice(uint8_t rssi)
 
             std::shared_ptr<std::vector<std::string>> valueKeys(new std::vector<std::string>({std::string("RSSI_DEVICE")}));
             std::shared_ptr<std::vector<PVariable>> rpcValues(new std::vector<PVariable>());
-            rpcValues->push_back(parameter.rpcParameter->convertFromPacket(parameterData));
+            rpcValues->push_back(parameter.rpcParameter->convertFromPacket(parameterData, parameter.invert(), false));
 
             std::string eventSource = "device-" + std::to_string(_peerID);
             std::string address = _serialNumber + ":0";
@@ -423,7 +423,7 @@ void MyPeer::packetReceived(PMyPacket& packet)
         if(!parameter.rpcParameter) return;
 
         std::vector<uint8_t> binaryValue;
-        parameter.rpcParameter->convertToPacket(value, binaryValue);
+        parameter.rpcParameter->convertToPacket(value, parameter.invert(), binaryValue);
         parameter.setBinaryData(binaryValue);
         if(parameter.databaseId > 0) saveParameter(parameter.databaseId, binaryValue);
         else saveParameter(0, ParameterGroup::Type::Enum::variables, channel, variableName, binaryValue);
@@ -434,7 +434,7 @@ void MyPeer::packetReceived(PMyPacket& packet)
         valueKeys[channel] = std::make_shared<std::vector<std::string>>();
         rpcValues[channel] = std::make_shared<std::vector<PVariable>>();
         valueKeys[channel]->push_back(variableName);
-        rpcValues[channel]->push_back(parameter.rpcParameter->convertFromPacket(binaryValue, true));
+        rpcValues[channel]->push_back(parameter.rpcParameter->convertFromPacket(binaryValue, parameter.invert(), true));
 
         for(std::map<uint32_t, std::shared_ptr<std::vector<std::string>>>::iterator j = valueKeys.begin(); j != valueKeys.end(); ++j)
         {
@@ -476,7 +476,7 @@ PVariable MyPeer::getValueFromDevice(PParameter& parameter, int32_t channel, boo
             if(result->errorStruct) return result;
 
             std::vector<uint8_t> parameterData;
-            parameter->convertToPacket(result, parameterData);
+            parameter->convertToPacket(result, parameterIterator->second.invert(), parameterData);
             parameterIterator->second.setBinaryData(parameterData);
             if(parameterIterator->second.databaseId > 0) saveParameter(parameterIterator->second.databaseId, parameterData);
             else saveParameter(0, ParameterGroup::Type::Enum::variables, channel, parameter->id, parameterData);
@@ -534,8 +534,9 @@ bool MyPeer::getAllValuesHook2(PRpcClientInfo clientInfo, PParameter parameter, 
             if(parameter->id == "PEER_ID")
             {
                 std::vector<uint8_t> parameterData;
-                parameter->convertToPacket(PVariable(new Variable((int32_t)_peerID)), parameterData);
-                valuesCentral[channel][parameter->id].setBinaryData(parameterData);
+                auto& rpcConfigurationParameter = valuesCentral[channel][parameter->id];
+                parameter->convertToPacket(PVariable(new Variable((int32_t)_peerID)), rpcConfigurationParameter.invert(), parameterData);
+                rpcConfigurationParameter.setBinaryData(parameterData);
             }
         }
     }
@@ -555,8 +556,9 @@ bool MyPeer::getParamsetHook2(PRpcClientInfo clientInfo, PParameter parameter, u
             if(parameter->id == "PEER_ID")
             {
                 std::vector<uint8_t> parameterData;
-                parameter->convertToPacket(PVariable(new Variable((int32_t)_peerID)), parameterData);
-                valuesCentral[channel][parameter->id].setBinaryData(parameterData);
+                auto& rpcConfigurationParameter = valuesCentral[channel][parameter->id];
+                parameter->convertToPacket(PVariable(new Variable((int32_t)_peerID)), rpcConfigurationParameter.invert(), parameterData);
+                rpcConfigurationParameter.setBinaryData(parameterData);
             }
         }
     }
@@ -625,7 +627,7 @@ PVariable MyPeer::getParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channe
                         if(!localParameter.rpcParameter) continue;
 
                         std::vector<uint8_t> binaryValue;
-                        localParameter.rpcParameter->convertToPacket(parameter.second, binaryValue);
+                        localParameter.rpcParameter->convertToPacket(parameter.second, localParameter.invert(), binaryValue);
                         localParameter.setBinaryData(binaryValue);
                         if(localParameter.databaseId > 0) saveParameter(localParameter.databaseId, binaryValue);
                         else saveParameter(0, ParameterGroup::Type::Enum::variables, channel, parameter.first, binaryValue);
@@ -646,7 +648,7 @@ PVariable MyPeer::getParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channe
                         if(!localParameter.rpcParameter) continue;
 
                         std::vector<uint8_t> binaryValue;
-                        localParameter.rpcParameter->convertToPacket(parameter.second, binaryValue);
+                        localParameter.rpcParameter->convertToPacket(parameter.second, localParameter.invert(), binaryValue);
                         localParameter.setBinaryData(binaryValue);
                         if(localParameter.databaseId > 0) saveParameter(localParameter.databaseId, binaryValue);
                         else saveParameter(0, ParameterGroup::Type::Enum::config, channel, parameter.first, binaryValue);
@@ -673,7 +675,7 @@ PVariable MyPeer::getParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channe
                                 if(!localParameter.rpcParameter) continue;
 
                                 std::vector<uint8_t> binaryValue;
-                                localParameter.rpcParameter->convertToPacket(parameter.second, binaryValue);
+                                localParameter.rpcParameter->convertToPacket(parameter.second, localParameter.invert(), binaryValue);
                                 localParameter.setBinaryData(binaryValue);
                                 if(localParameter.databaseId > 0) saveParameter(localParameter.databaseId, binaryValue);
                                 else saveParameter(0, ParameterGroup::Type::Enum::config, channel, parameter.first, binaryValue, remoteID, remoteChannel);
@@ -722,7 +724,7 @@ PVariable MyPeer::putParamset(BaseLib::PRpcClientInfo clientInfo, int32_t channe
                 if(!parameter.rpcParameter) continue;
                 if(parameter.rpcParameter->password && i->second->stringValue.empty()) continue; //Don't safe password if empty
                 std::vector<uint8_t> parameterData;
-                parameter.rpcParameter->convertToPacket(i->second, parameterData);
+                parameter.rpcParameter->convertToPacket(i->second, parameter.invert(), parameterData);
                 parameter.setBinaryData(parameterData);
                 if(parameter.databaseId > 0) saveParameter(parameter.databaseId, parameterData);
                 else saveParameter(0, ParameterGroup::Type::Enum::config, channel, i->first, parameterData);
@@ -849,7 +851,7 @@ PVariable MyPeer::setValue(BaseLib::PRpcClientInfo clientInfo, uint32_t channel,
         if(rpcParameter->physical->operationType == IPhysical::OperationType::Enum::store)
         {
             std::vector<uint8_t> parameterData;
-            rpcParameter->convertToPacket(value, parameterData);
+            rpcParameter->convertToPacket(value, parameter.invert(), parameterData);
             parameter.setBinaryData(parameterData);
             if(parameter.databaseId > 0) saveParameter(parameter.databaseId, parameterData);
             else saveParameter(0, ParameterGroup::Type::Enum::variables, channel, valueKey, parameterData);
@@ -865,7 +867,7 @@ PVariable MyPeer::setValue(BaseLib::PRpcClientInfo clientInfo, uint32_t channel,
         if(rpcParameter->setPackets.empty() && !rpcParameter->writeable) return Variable::createError(-6, "parameter is read only");
 
         std::vector<uint8_t> parameterData;
-        rpcParameter->convertToPacket(value, parameterData);
+        rpcParameter->convertToPacket(value, parameter.invert(), parameterData);
         parameter.setBinaryData(parameterData);
         if(parameter.databaseId > 0) saveParameter(parameter.databaseId, parameterData);
         else saveParameter(0, ParameterGroup::Type::Enum::variables, channel, valueKey, parameterData);
