@@ -71,6 +71,7 @@ public:
     bool hasBidCos() { return (bool)_bidcosClient; }
     bool hasWired() { return (bool)_wiredClient && !_wiredDisabled.load(std::memory_order_acquire); }
     bool hasHmip() { return (bool)_hmipClient; }
+    bool hasHmVirtual() { return (bool)_hmVirtualClient; }
 
     std::vector<std::shared_ptr<CcuServiceMessage>> getServiceMessages() { std::lock_guard<std::mutex> serviceMessagesGuard(_serviceMessagesMutex); return _serviceMessages; }
     std::unordered_map<std::string, std::unordered_map<int32_t, std::string>> getNames();

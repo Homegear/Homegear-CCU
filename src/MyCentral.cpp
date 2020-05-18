@@ -985,6 +985,31 @@ void MyCentral::searchDevicesThread(std::string interfaceId)
                     }
                 }
             }
+
+            if(interface->hasHmVirtual())
+            {
+                auto result = interface->invoke(Ccu::RpcType::hmvirtual, methodName, parameters);
+                if(result->errorStruct)
+                {
+                    GD::out.printWarning("Warning: Error calling listDevices for virtual devices on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
+                }
+                else
+                {
+                    for(auto& description : *result->arrayValue)
+                    {
+                        auto addressIterator = description->structValue->find("ADDRESS");
+                        if(addressIterator == description->structValue->end()) continue;
+                        std::string serialNumber = addressIterator->second->stringValue;
+                        BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
+                        if(serialNumber.find(':') != std::string::npos) continue;
+                        std::string interfaceId = interface->getID();
+                        std::unordered_map<int32_t, std::string> names;
+                        auto deviceNameIterator = deviceNames.find(serialNumber);
+                        if(deviceNameIterator != deviceNames.end()) names = deviceNameIterator->second;
+                        pairDevice(Ccu::RpcType::hmvirtual, interfaceId, serialNumber, names);
+                    }
+                }
+            }
         }
     }
     catch(const std::exception& ex)
