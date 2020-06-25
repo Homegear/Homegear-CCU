@@ -164,6 +164,8 @@ void Interfaces::removeUnknownInterfaces(std::set<std::string>& knownInterfaces)
                 GD::family->deleteFamilySettingFromDatabase(name);
                 name = interfaceBase.first + ".port3";
                 GD::family->deleteFamilySettingFromDatabase(name);
+                name = interfaceBase.first + ".port4";
+                GD::family->deleteFamilySettingFromDatabase(name);
 
                 interfacesToDelete.push_back(interfaceBase.first);
             }
@@ -212,6 +214,8 @@ std::shared_ptr<Ccu> Interfaces::addInterface(Systems::PPhysicalInterfaceSetting
                 GD::family->setFamilySetting(name, settings->port2);
                 name = settings->id + ".port3";
                 GD::family->setFamilySetting(name, settings->port3);
+                name = settings->id + ".port4";
+                GD::family->setFamilySetting(name, settings->port4);
             }
         }
         return device;

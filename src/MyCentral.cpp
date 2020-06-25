@@ -985,6 +985,31 @@ void MyCentral::searchDevicesThread(std::string interfaceId)
                     }
                 }
             }
+
+            if(interface->hasHmVirtual())
+            {
+                auto result = interface->invoke(Ccu::RpcType::hmvirtual, methodName, parameters);
+                if(result->errorStruct)
+                {
+                    GD::out.printWarning("Warning: Error calling listDevices for virtual devices on CCU " + interface->getID() + ": " + result->structValue->at("faultString")->stringValue);
+                }
+                else
+                {
+                    for(auto& description : *result->arrayValue)
+                    {
+                        auto addressIterator = description->structValue->find("ADDRESS");
+                        if(addressIterator == description->structValue->end()) continue;
+                        std::string serialNumber = addressIterator->second->stringValue;
+                        BaseLib::HelperFunctions::stripNonAlphaNumeric(serialNumber);
+                        if(serialNumber.find(':') != std::string::npos) continue;
+                        std::string interfaceId = interface->getID();
+                        std::unordered_map<int32_t, std::string> names;
+                        auto deviceNameIterator = deviceNames.find(serialNumber);
+                        if(deviceNameIterator != deviceNames.end()) names = deviceNameIterator->second;
+                        pairDevice(Ccu::RpcType::hmvirtual, interfaceId, serialNumber, names);
+                    }
+                }
+            }
         }
     }
     catch(const std::exception& ex)
@@ -1222,6 +1247,7 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
                                             settings->port = interface->getPort1();
                                             settings->port2 = interface->getPort2();
                                             settings->port3 = interface->getPort3();
+                                            settings->port4 = interface->getPort4();
                                         }
                                         else if(addNewInterfaces)
                                         {
@@ -1231,6 +1257,7 @@ PVariable MyCentral::searchInterfaces(BaseLib::PRpcClientInfo clientInfo, BaseLi
                                             settings->port = "2001";
                                             settings->port2 = "2010";
                                             settings->port3 = "2000";
+                                            settings->port4 = "9292";
                                         }
 
 										if(interface || addNewInterfaces)

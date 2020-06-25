@@ -65,6 +65,8 @@ Ccu::Ccu(std::shared_ptr<BaseLib::Systems::PhysicalInterfaceSettings> settings) 
     if((_port2 < 1 || _port2 > 65535) && _port2 != 0) _port2 = 2010;
     _port3 = BaseLib::Math::getNumber(settings->port3);
     if((_port3 < 1 || _port3 > 65535) && _port3 != 0) _port3 = 2000;
+    _port4 = BaseLib::Math::getNumber(settings->port4);
+    if((_port4 < 1 || _port4 > 65535) && _port4 != 0) _port4 = 9292;
 
     _httpClient = std::unique_ptr<BaseLib::HttpClient>(new HttpClient(_bl, _hostname, 8181, false, false));
 }
@@ -105,9 +107,11 @@ void Ccu::init()
         _bidcosDevicesExist = false;
         _hmipNewDevicesCalled = false;
         _wiredNewDevicesCalled = false;
+        _hmVirtualNewDevicesCalled = false;
         _lastPongBidcos.store(BaseLib::HelperFunctions::getTime());
         _lastPongHmip.store(BaseLib::HelperFunctions::getTime());
         _lastPongWired.store(BaseLib::HelperFunctions::getTime());
+        _lastPongHmVirtual.store(BaseLib::HelperFunctions::getTime());
 
         if(_bidcosClient)
         {
@@ -187,7 +191,30 @@ void Ccu::init()
             }
         }
 
-        if(!_bidcosReInit.load(std::memory_order_acquire) && !_hmipReInit.load(std::memory_order_acquire) && !_wiredReInit.load(std::memory_order_acquire)) _out.printInfo("Info: Init complete.");
+        if(_hmVirtualClient)
+        {
+            try
+            {
+                auto parameters = std::make_shared<BaseLib::Array>();
+                parameters->reserve(2);
+                parameters->push_back(std::make_shared<BaseLib::Variable>("http://" + _listenIp + ":" + std::to_string(_listenPort)));
+                parameters->push_back(std::make_shared<BaseLib::Variable>(_hmVirtualIdString));
+                auto result = invoke(RpcType::hmvirtual, "init", parameters);
+                if(result->errorStruct)
+                {
+                    _out.printError("Error calling \"init\" for HomeMatic Virtual Devices: " + result->structValue->at("faultString")->stringValue);
+                    _hmVirtualReInit = true;
+                }
+                else _hmVirtualReInit = false;
+            }
+            catch(const std::exception& ex)
+            {
+                _hmVirtualReInit = true;
+                _out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+            }
+        }
+
+        if(!_bidcosReInit.load(std::memory_order_acquire) && !_hmipReInit.load(std::memory_order_acquire) && !_wiredReInit.load(std::memory_order_acquire) && !_hmVirtualReInit.load(std::memory_order_acquire)) _out.printInfo("Info: Init complete.");
     }
     catch(const std::exception& ex)
     {
@@ -225,6 +252,14 @@ void Ccu::deinit()
             if(result->errorStruct) _out.printError("Error calling (de-)\"init\" for HomeMatic Wired: " + result->structValue->at("faultString")->stringValue);
         }
 
+        if(_hmVirtualClient)
+        {
+            parameters->at(0)->stringValue = "http://" + _listenIp + ":" + std::to_string(_listenPort);
+            parameters->at(1)->stringValue = "";
+            auto result = invoke(RpcType::hmvirtual, "init", parameters);
+            if(result->errorStruct) _out.printError("Error calling (de-)\"init\" for HomeMatic Virtual Devices: " + result->structValue->at("faultString")->stringValue);
+        }
+
         _out.printInfo("Info: Deinit complete.");
     }
     catch(const std::exception& ex)
@@ -247,12 +282,15 @@ void Ccu::startListening()
             _lastPongBidcos.store(BaseLib::HelperFunctions::getTime());
             _lastPongHmip.store(BaseLib::HelperFunctions::getTime());
             _lastPongWired.store(BaseLib::HelperFunctions::getTime());
+            _lastPongHmVirtual.store(BaseLib::HelperFunctions::getTime());
             _bidcosDevicesExist = false;
             _hmipNewDevicesCalled = false;
             _wiredNewDevicesCalled = false;
+            _hmVirtualNewDevicesCalled = false;
             _bidcosReInit = false;
             _hmipReInit = false;
             _wiredReInit = false;
+            _hmVirtualReInit = false;
 
             BaseLib::TcpSocket::TcpServerInfo serverInfo;
             serverInfo.newConnectionCallback = std::bind(&Ccu::newConnection, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
@@ -306,17 +344,19 @@ void Ccu::startListening()
             if(!BaseLib::Net::isIp(_listenIp)) _listenIp = BaseLib::Net::getMyIpAddress(_listenIp);
             _out.printInfo("Info: My own IP address is " + _listenIp + ".");
 
-            _out.printInfo("Info: Connecting to IP " + _hostname + " and ports " + (_port != 0 ? std::to_string(_port) : "") + (_port3 != 0 ? ", " + std::to_string(_port3) : "") + (_port2 != 0 ? ", " + std::to_string(_port2) : "") + ".");
+            _out.printInfo("Info: Connecting to IP " + _hostname + " and ports " + (_port != 0 ? std::to_string(_port) : "") + (_port3 != 0 ? ", " + std::to_string(_port3) : "") + (_port2 != 0 ? ", " + std::to_string(_port2) : "") + (_port4 != 0 ? ", " + std::to_string(_port4) : "") + ".");
 
             if(_port != 0) _bidcosClient = std::unique_ptr<BaseLib::HttpClient>(new BaseLib::HttpClient(_bl, _hostname, _port, false, false));
             if(_port2 != 0) _hmipClient = std::unique_ptr<BaseLib::HttpClient>(new BaseLib::HttpClient(_bl, _hostname, _port2, false, false));
             if(_port3 != 0) _wiredClient = std::unique_ptr<BaseLib::HttpClient>(new BaseLib::HttpClient(_bl, _hostname, _port3, false, false));
+            if(_port4 != 0) _hmVirtualClient = std::unique_ptr<BaseLib::HttpClient>(new BaseLib::HttpClient(_bl, _hostname, _port4, false, false));
 
             _ipAddress = BaseLib::Net::resolveHostname(_hostname);
 
             _bidcosIdString = "Homegear_BidCoS_" + _listenIp + "_" + std::to_string(_listenPort);
             _hmipIdString = "Homegear_HMIP_" + _listenIp + "_" + std::to_string(_listenPort);
             _wiredIdString = "Homegear_Wired_" + _listenIp + "_" + std::to_string(_listenPort);
+            _hmVirtualIdString = "Homegear_Virtual_" + _listenIp + "_" + std::to_string(_listenPort);
 
             _stopPingThread = false;
             _bl->threadManager.start(_pingThread, true, &Ccu::ping, this);
@@ -447,6 +487,7 @@ void Ccu::processPacket(int32_t clientId, std::string& methodName, BaseLib::PArr
         BaseLib::PVariable response = std::make_shared<BaseLib::Variable>();
 
         if(!parameters->empty() && parameters->at(0)->stringValue == _hmipIdString) _lastPongHmip.store(BaseLib::HelperFunctions::getTime());
+        else if(!parameters->empty() && parameters->at(0)->stringValue == _hmVirtualIdString) _lastPongHmVirtual.store(BaseLib::HelperFunctions::getTime());
 
         if(methodName == "system.multicall")
         {
@@ -480,6 +521,7 @@ void Ccu::processPacket(int32_t clientId, std::string& methodName, BaseLib::PArr
                             if(parameters->at(0)->stringValue == _bidcosIdString) parameters->at(0)->integerValue = (int32_t) RpcType::bidcos;
                             else if(parameters->at(0)->stringValue == _hmipIdString) parameters->at(0)->integerValue = (int32_t) RpcType::hmip;
                             else if(parameters->at(0)->stringValue == _wiredIdString) parameters->at(0)->integerValue = (int32_t) RpcType::wired;
+                            else if(parameters->at(0)->stringValue == _hmVirtualIdString) parameters->at(0)->integerValue = (int32_t) RpcType::hmvirtual;
                             _out.printInfo("Info: CCU (" + std::to_string(parameters->at(0)->integerValue) + ") is calling RPC method " + methodNameIterator->second->stringValue);
                             PMyPacket packet = std::make_shared<MyPacket>(methodNameIterator->second->stringValue, parameters);
                             raisePacketReceived(packet);
@@ -500,6 +542,11 @@ void Ccu::processPacket(int32_t clientId, std::string& methodName, BaseLib::PArr
                 parameters->at(0)->integerValue = (int32_t)RpcType::wired;
                 _wiredNewDevicesCalled = true;
             }
+            else if(parameters->at(0)->stringValue == _hmVirtualIdString)
+            {
+                parameters->at(0)->integerValue = (int32_t)RpcType::hmvirtual;
+                _hmVirtualNewDevicesCalled = true;
+            }
             else
             {
                 parameters->at(0)->integerValue = (int32_t) RpcType::hmip;
@@ -513,6 +560,7 @@ void Ccu::processPacket(int32_t clientId, std::string& methodName, BaseLib::PArr
         {
             if(parameters->at(0)->stringValue == _bidcosIdString) parameters->at(0)->integerValue = (int32_t) RpcType::bidcos;
             else if(parameters->at(0)->stringValue == _wiredIdString) parameters->at(0)->integerValue = (int32_t)RpcType::wired;
+            else if(parameters->at(0)->stringValue == _hmVirtualIdString) parameters->at(0)->integerValue = (int32_t)RpcType::hmvirtual;
             else parameters->at(0)->integerValue = (int32_t)RpcType::hmip;
             _out.printInfo("Info: CCU (" + std::to_string(parameters->at(0)->integerValue) + ") is calling RPC method " + methodName);
             response->setType(BaseLib::VariableType::tArray);
@@ -524,6 +572,7 @@ void Ccu::processPacket(int32_t clientId, std::string& methodName, BaseLib::PArr
                 if(parameters->at(0)->stringValue == _bidcosIdString) parameters->at(0)->integerValue = (int32_t) RpcType::bidcos;
                 else if(parameters->at(0)->stringValue == _hmipIdString) parameters->at(0)->integerValue = (int32_t) RpcType::hmip;
                 else if(parameters->at(0)->stringValue == _wiredIdString) parameters->at(0)->integerValue = (int32_t) RpcType::wired;
+                else if(parameters->at(0)->stringValue == _hmVirtualIdString) parameters->at(0)->integerValue = (int32_t)RpcType::hmvirtual;
                 _out.printInfo("Info: CCU (" + std::to_string(parameters->at(0)->integerValue) + ") is calling RPC method " + methodName);
                 PMyPacket packet = std::make_shared<MyPacket>(methodName, parameters);
                 raisePacketReceived(packet);
@@ -618,9 +667,20 @@ void Ccu::ping()
                 else _hmipReInit = true;
             }
 
+            if(_hmVirtualClient && ((_hmVirtualNewDevicesCalled && BaseLib::HelperFunctions::getTime() - _lastPongHmVirtual.load() > 3600000) || _hmVirtualReInit))
+            {
+                if(regaReady())
+                {
+                    if(!_hmVirtualReInit) _out.printError("Error: No keep alive received (Virtual). Reinitializing...");
+                    init();
+                }
+                else _hmVirtualReInit = true;
+            }
+
             if(_port != 0 && !_bidcosClient) _bidcosClient = std::unique_ptr<BaseLib::HttpClient>(new BaseLib::HttpClient(_bl, _hostname, _port, false, false));
             if(_port2 != 0 && !_hmipClient) _hmipClient = std::unique_ptr<BaseLib::HttpClient>(new BaseLib::HttpClient(_bl, _hostname, _port2, false, false));
             if(_port3 != 0 && !_wiredClient) _wiredClient = std::unique_ptr<BaseLib::HttpClient>(new BaseLib::HttpClient(_bl, _hostname, _port3, false, false));
+            if(_port4 != 0 && !_hmVirtualClient) _hmVirtualClient = std::unique_ptr<BaseLib::HttpClient>(new BaseLib::HttpClient(_bl, _hostname, _port4, false, false));
 
             if(_ipAddress.empty())
             {
@@ -643,15 +703,17 @@ BaseLib::PVariable Ccu::invoke(Ccu::RpcType rpcType, std::string methodName, Bas
         if(rpcType == RpcType::bidcos && !_bidcosClient) return BaseLib::Variable::createError(-32501, "HomeMatic BidCoS is disabled.");
         else if(rpcType == RpcType::hmip && !_hmipClient) return BaseLib::Variable::createError(-32501, "HomeMatic IP is disabled.");
         else if(rpcType == RpcType::wired && (!_wiredClient || _wiredDisabled)) return BaseLib::Variable::createError(-32501, "HomeMatic Wired is disabled.");
+        else if(rpcType == RpcType::hmvirtual && !_hmVirtualClient) return BaseLib::Variable::createError(-32501, "HomeMatic Virtual Devices are disabled.");
 
         std::lock_guard<std::mutex> invokeGuard(_invokeMutex);
 
+        std::string path = rpcType == RpcType::hmvirtual ? "/groups" : "/";
         std::string data;
         std::vector<char> xmlData;
         _xmlrpcEncoder->encodeRequest(methodName, parameters, xmlData);
         xmlData.push_back('\r');
         xmlData.push_back('\n');
-        std::string header = "POST / HTTP/1.1\r\nUser-Agent: homegear-ccu\r\nHost: " + _ipAddress + ":" + std::to_string(_port2) + "\r\nContent-Type: text/xml\r\nContent-Length: " + std::to_string(xmlData.size()) + "\r\nConnection: Keep-Alive\r\n\r\n";
+        std::string header = "POST " + path + " HTTP/1.1\r\nUser-Agent: homegear-ccu\r\nHost: " + _ipAddress + ":" + std::to_string(_port2) + "\r\nContent-Type: text/xml\r\nContent-Length: " + std::to_string(xmlData.size()) + "\r\nConnection: Keep-Alive\r\n\r\n";
         data.reserve(header.size() + xmlData.size());
         data.insert(data.end(), header.begin(), header.end());
         data.insert(data.end(), xmlData.begin(), xmlData.end());
@@ -664,6 +726,7 @@ BaseLib::PVariable Ccu::invoke(Ccu::RpcType rpcType, std::string methodName, Bas
             if(rpcType == RpcType::bidcos) _bidcosClient->sendRequest(data, httpResponse, false);
             else if(rpcType == RpcType::hmip) _hmipClient->sendRequest(data, httpResponse, false);
             else if(rpcType == RpcType::wired) _wiredClient->sendRequest(data, httpResponse, false);
+            else if(rpcType == RpcType::hmvirtual) _hmVirtualClient->sendRequest(data, httpResponse, false);
 
             if(GD::bl->debugLevel >= 5) GD::out.printDebug("Debug: Response was (" + std::to_string((int)rpcType) + ") " + std::string(httpResponse.getContent().data(), httpResponse.getContentSize()));
         }

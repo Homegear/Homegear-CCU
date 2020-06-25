@@ -47,7 +47,8 @@ public:
     {
         bidcos,
         hmip,
-        wired
+        wired,
+        hmvirtual
     };
 
     struct CcuServiceMessage
@@ -65,10 +66,12 @@ public:
     std::string getPort1() { return _settings->port; }
     std::string getPort2() { return _settings->port2; }
     std::string getPort3() { return _settings->port3; }
+    std::string getPort4() { return _settings->port4; }
 
     bool hasBidCos() { return (bool)_bidcosClient; }
     bool hasWired() { return (bool)_wiredClient && !_wiredDisabled.load(std::memory_order_acquire); }
     bool hasHmip() { return (bool)_hmipClient; }
+    bool hasHmVirtual() { return (bool)_hmVirtualClient; }
 
     std::vector<std::shared_ptr<CcuServiceMessage>> getServiceMessages() { std::lock_guard<std::mutex> serviceMessagesGuard(_serviceMessagesMutex); return _serviceMessages; }
     std::unordered_map<std::string, std::unordered_map<int32_t, std::string>> getNames();
@@ -91,19 +94,23 @@ private:
     int32_t _port = 2001;
     int32_t _port2 = 2010;
     int32_t _port3 = 2000;
+    int32_t _port4 = 9292;
     std::string _listenIp;
     int32_t _listenPort = -1;
     std::string _bidcosIdString;
     std::string _hmipIdString;
     std::string _wiredIdString;
+    std::string _hmVirtualIdString;
     std::atomic_bool _stopPingThread{false};
     std::atomic<int64_t> _lastPongBidcos{0};
     std::atomic<int64_t> _lastPongHmip{0};
     std::atomic<int64_t> _lastPongWired{0};
+    std::atomic<int64_t> _lastPongHmVirtual{0};
     std::shared_ptr<BaseLib::TcpSocket> _server;
     std::unique_ptr<BaseLib::HttpClient> _bidcosClient;
     std::unique_ptr<BaseLib::HttpClient> _hmipClient;
     std::unique_ptr<BaseLib::HttpClient> _wiredClient;
+    std::unique_ptr<BaseLib::HttpClient> _hmVirtualClient;
     std::unique_ptr<BaseLib::HttpClient> _httpClient;
     RpcType _connectedRpcType = RpcType::bidcos;
     std::atomic_bool _unreachable{false};
@@ -114,6 +121,8 @@ private:
     std::atomic_bool _wiredNewDevicesCalled{false};
     std::atomic_bool _wiredReInit{false};
     std::atomic_bool _wiredDisabled{false};
+    std::atomic_bool _hmVirtualNewDevicesCalled{false};
+    std::atomic_bool _hmVirtualReInit{false};
     std::mutex _ccuClientInfoMutex;
     std::map<int32_t, CcuClientInfo> _ccuClientInfo;
     std::unique_ptr<BaseLib::Rpc::XmlrpcEncoder> _xmlrpcEncoder;
