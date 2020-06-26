@@ -11,7 +11,7 @@ DescriptionCreator::DescriptionCreator()
 
 }
 
-DescriptionCreator::PeerInfo DescriptionCreator::createDescription(Ccu::RpcType rpcType, std::string& interfaceId, std::string& serialNumber, uint32_t oldTypeNumber, std::unordered_set<uint32_t>& knownTypeNumbers)
+DescriptionCreator::PeerInfo DescriptionCreator::createDescription(Ccu::RpcType rpcType, std::string& interfaceId, std::string& serialNumber, uint32_t oldTypeNumber, std::unordered_set<uint64_t>& knownTypeNumbers)
 {
     try
     {
