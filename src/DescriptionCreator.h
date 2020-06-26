@@ -25,7 +25,7 @@ public:
     DescriptionCreator();
     virtual ~DescriptionCreator() = default;
 
-    DescriptionCreator::PeerInfo createDescription(Ccu::RpcType rpcType, std::string& interfaceId, std::string& serialNumber, uint32_t oldTypeNumber, std::unordered_set<uint32_t>& knownTypeNumbers);
+    DescriptionCreator::PeerInfo createDescription(Ccu::RpcType rpcType, std::string& interfaceId, std::string& serialNumber, uint32_t oldTypeNumber, std::unordered_set<uint64_t>& knownTypeNumbers);
 private:
     std::string _xmlPath;
 
