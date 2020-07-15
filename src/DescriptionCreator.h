@@ -28,6 +28,7 @@ public:
     DescriptionCreator::PeerInfo createDescription(Ccu::RpcType rpcType, std::string& interfaceId, std::string& serialNumber, uint32_t oldTypeNumber, std::unordered_set<uint64_t>& knownTypeNumbers);
 private:
     std::string _xmlPath;
+    BaseLib::Ansi _ansi{true, false};
 
     void createDirectories();
     void addParameterSet(Ccu::RpcType rpcType, std::shared_ptr<Ccu>& interface, std::shared_ptr<HomegearDevice>& device, std::string& serialNumber, int32_t channel, std::string& type);
