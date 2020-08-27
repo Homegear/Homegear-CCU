@@ -198,6 +198,11 @@ PVariable MyFamily::getPairingInfo()
             field->structValue->emplace("const", std::make_shared<BaseLib::Variable>(std::string("2000")));
             interface->structValue->emplace("port3", field);
 
+            field = std::make_shared<BaseLib::Variable>(BaseLib::VariableType::tStruct);
+            field->structValue->emplace("type", std::make_shared<BaseLib::Variable>(std::string("string")));
+            field->structValue->emplace("const", std::make_shared<BaseLib::Variable>(std::string("9292")));
+            interface->structValue->emplace("port4", field);
+
             interfaces->structValue->emplace("ccu", interface);
 
             info->structValue->emplace("interfaces", interfaces);

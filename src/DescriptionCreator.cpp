@@ -11,7 +11,7 @@ DescriptionCreator::DescriptionCreator()
 
 }
 
-DescriptionCreator::PeerInfo DescriptionCreator::createDescription(Ccu::RpcType rpcType, std::string& interfaceId, std::string& serialNumber, uint32_t oldTypeNumber, std::unordered_set<uint32_t>& knownTypeNumbers)
+DescriptionCreator::PeerInfo DescriptionCreator::createDescription(Ccu::RpcType rpcType, std::string& interfaceId, std::string& serialNumber, uint32_t oldTypeNumber, std::unordered_set<uint64_t>& knownTypeNumbers)
 {
     try
     {
@@ -250,7 +250,7 @@ void DescriptionCreator::addParameterSet(Ccu::RpcType rpcType, std::shared_ptr<C
                 if(elementIterator != parameterDescription.second->structValue->end()) logical->maximumValue = elementIterator->second->integerValue;
 
                 elementIterator = parameterDescription.second->structValue->find("UNIT");
-                if(elementIterator != parameterDescription.second->structValue->end()) parameter->unit = elementIterator->second->stringValue;
+                if(elementIterator != parameterDescription.second->structValue->end()) parameter->unit = _ansi.toUtf8(elementIterator->second->stringValue);
 
                 elementIterator = parameterDescription.second->structValue->find("SPECIAL");
                 if(elementIterator != parameterDescription.second->structValue->end())
@@ -285,7 +285,7 @@ void DescriptionCreator::addParameterSet(Ccu::RpcType rpcType, std::shared_ptr<C
                 if(elementIterator != parameterDescription.second->structValue->end()) logical->maximumValue = elementIterator->second->integerValue;
 
                 elementIterator = parameterDescription.second->structValue->find("UNIT");
-                if(elementIterator != parameterDescription.second->structValue->end()) parameter->unit = elementIterator->second->stringValue;
+                if(elementIterator != parameterDescription.second->structValue->end()) parameter->unit = _ansi.toUtf8(elementIterator->second->stringValue);
 
                 elementIterator = parameterDescription.second->structValue->find("VALUE_LIST");
                 if(elementIterator != parameterDescription.second->structValue->end())
@@ -321,7 +321,7 @@ void DescriptionCreator::addParameterSet(Ccu::RpcType rpcType, std::shared_ptr<C
                 if(elementIterator != parameterDescription.second->structValue->end()) logical->maximumValue = elementIterator->second->floatValue;
 
                 elementIterator = parameterDescription.second->structValue->find("UNIT");
-                if(elementIterator != parameterDescription.second->structValue->end()) parameter->unit = elementIterator->second->stringValue;
+                if(elementIterator != parameterDescription.second->structValue->end()) parameter->unit = _ansi.toUtf8(elementIterator->second->stringValue);
 
                 elementIterator = parameterDescription.second->structValue->find("SPECIAL");
                 if(elementIterator != parameterDescription.second->structValue->end())
@@ -342,7 +342,7 @@ void DescriptionCreator::addParameterSet(Ccu::RpcType rpcType, std::shared_ptr<C
                 parameter->logical = std::make_shared<LogicalString>(GD::bl);
 
                 elementIterator = parameterDescription.second->structValue->find("UNIT");
-                if(elementIterator != parameterDescription.second->structValue->end()) parameter->unit = elementIterator->second->stringValue;
+                if(elementIterator != parameterDescription.second->structValue->end()) parameter->unit = _ansi.toUtf8(elementIterator->second->stringValue);
             }
 
             parameterGroup->parametersOrdered.push_back(parameter);
