@@ -728,6 +728,7 @@ PVariable MyCentral::getServiceMessages(PRpcClientInfo clientInfo, bool returnId
           newElement->structValue->emplace("VARIABLE", std::make_shared<Variable>(element->message));
           newElement->structValue->emplace("TIMESTAMP", std::make_shared<Variable>(element->time));
           newElement->structValue->emplace("MESSAGE", std::make_shared<Variable>(element->message));
+          newElement->structValue->emplace("PRIORITY", std::make_shared<Variable>((int32_t)BaseLib::ServiceMessagePriority::kWarning));
           newElement->structValue->emplace("VALUE", std::make_shared<Variable>(element->value));
           serviceMessages->arrayValue->emplace_back(newElement);
         } else {

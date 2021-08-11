@@ -614,7 +614,7 @@ void Ccu::ping()
                 if(!_unreachable)
                 {
                     _unreachable = true;
-                    _bl->globalServiceMessages.set(MY_FAMILY_ID, _settings->id, 0, _settings->id, BaseLib::HelperFunctions::getTimeSeconds(), "l10n.ccu.serviceMessage.ccuUnreachable", std::list<std::string>{ _settings->serialNumber, _ipAddress }, data, 1);
+                    _bl->globalServiceMessages.set(MY_FAMILY_ID, _settings->id, 0, _settings->id, BaseLib::ServiceMessagePriority::kError, BaseLib::HelperFunctions::getTimeSeconds(), "l10n.ccu.serviceMessage.ccuUnreachable", std::list<std::string>{ _settings->serialNumber, _ipAddress }, data, 1);
                 }
             }
             else
