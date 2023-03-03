@@ -31,7 +31,6 @@
 #define HOMEGEAR_CCU_CCU_H
 
 #include <homegear-base/Systems/IPhysicalInterface.h>
-#include <homegear-base/Sockets/TcpSocket.h>
 #include <homegear-base/Encoding/XmlrpcDecoder.h>
 #include <homegear-base/Encoding/XmlrpcEncoder.h>
 #include <homegear-base/Encoding/Http.h>
