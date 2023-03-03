@@ -275,13 +275,13 @@ void Ccu::startListening() {
       for (int32_t i = portRangeStart; i <= portRangeEnd; i++) {
         try {
           serverInfo.port = i;
-          _server = std::make_shared<C1Net::TcpServer>(GD::bl, serverInfo);
+          _server = std::make_shared<C1Net::TcpServer>(serverInfo);
           _server->Start();
           _listenPort = i;
           serverBound = true;
           break;
         }
-        catch (const C1Net::TcpServerAddressInUseException &ex) {
+        catch (const C1Net::AddressInUseException &ex) {
           continue;
         }
       }
