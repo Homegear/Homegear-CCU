@@ -144,7 +144,7 @@ private:
     void log(uint32_t log_level, const std::string &message);
     void newConnection(const C1Net::TcpServer::PTcpClientData &client_data);
     void connectionClosed(const C1Net::TcpServer::PTcpClientData &client_data, int32_t error_code, std::string error_message);
-    void packetReceived(const C1Net::TcpServer::PTcpClientData &client_data, const BaseLib::TcpSocket::TcpPacket &packet);
+    void packetReceived(const C1Net::TcpServer::PTcpClientData &client_data, const C1Net::TcpPacket &packet);
     void processPacket(const C1Net::TcpServer::PTcpClientData &client_data, std::string& methodName, BaseLib::PArray parameters);
     void init();
     void deinit();

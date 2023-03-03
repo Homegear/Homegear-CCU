@@ -374,7 +374,7 @@ void Ccu::connectionClosed(const C1Net::TcpServer::PTcpClientData &client_data, 
   }
 }
 
-void Ccu::packetReceived(const C1Net::TcpServer::PTcpClientData &client_data, const BaseLib::TcpSocket::TcpPacket &packet) {
+void Ccu::packetReceived(const C1Net::TcpServer::PTcpClientData &client_data, const C1Net::TcpPacket &packet) {
   std::shared_ptr<BaseLib::Http> http;
 
   try {
@@ -492,7 +492,7 @@ void Ccu::processPacket(const C1Net::TcpServer::PTcpClientData &client_data, std
       }
     }
 
-    BaseLib::TcpSocket::TcpPacket responsePacket;
+    C1Net::TcpPacket responsePacket;
     std::vector<uint8_t> xmlData;
     _xmlrpcEncoder->encodeResponse(response, xmlData);
     std::string header = "HTTP/1.1 200 OK\r\nConnection: Close\r\nContent-Type: text/xml\r\nContent-Length: " + std::to_string(xmlData.size()) + "\r\n\r\n";
