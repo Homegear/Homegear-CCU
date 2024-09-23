@@ -31,11 +31,11 @@
 #define HOMEGEAR_CCU_CCU_H
 
 #include <homegear-base/Systems/IPhysicalInterface.h>
-#include <homegear-base/Sockets/TcpSocket.h>
 #include <homegear-base/Encoding/XmlrpcDecoder.h>
 #include <homegear-base/Encoding/XmlrpcEncoder.h>
 #include <homegear-base/Encoding/Http.h>
 #include <homegear-base/Sockets/HttpClient.h>
+#include <c1-net/TcpServer.h>
 
 namespace MyFamily
 {
@@ -106,7 +106,7 @@ private:
     std::atomic<int64_t> _lastPongHmip{0};
     std::atomic<int64_t> _lastPongWired{0};
     std::atomic<int64_t> _lastPongHmVirtual{0};
-    std::shared_ptr<BaseLib::TcpSocket> _server;
+    std::shared_ptr<C1Net::TcpServer> _server;
     std::unique_ptr<BaseLib::HttpClient> _bidcosClient;
     std::unique_ptr<BaseLib::HttpClient> _hmipClient;
     std::unique_ptr<BaseLib::HttpClient> _wiredClient;
@@ -141,10 +141,11 @@ private:
     std::mutex _serviceMessagesMutex;
     std::vector<std::shared_ptr<CcuServiceMessage>> _serviceMessages;
 
-    void newConnection(int32_t clientId, std::string address, uint16_t port);
-    void connectionClosed(int32_t clientId);
-    void packetReceived(int32_t clientId, BaseLib::TcpSocket::TcpPacket packet);
-    void processPacket(int32_t clientId, std::string& methodName, BaseLib::PArray parameters);
+    void log(uint32_t log_level, const std::string &message);
+    void newConnection(const C1Net::TcpServer::PTcpClientData &client_data);
+    void connectionClosed(const C1Net::TcpServer::PTcpClientData &client_data, int32_t error_code, std::string error_message);
+    void packetReceived(const C1Net::TcpServer::PTcpClientData &client_data, const C1Net::TcpPacket &packet);
+    void processPacket(const C1Net::TcpServer::PTcpClientData &client_data, std::string& methodName, BaseLib::PArray parameters);
     void init();
     void deinit();
     void ping();
