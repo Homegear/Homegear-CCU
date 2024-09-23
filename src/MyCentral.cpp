@@ -31,6 +31,7 @@
 #include "GD.h"
 
 #include <iomanip>
+#include <arpa/inet.h>
 
 namespace MyFamily {
 
