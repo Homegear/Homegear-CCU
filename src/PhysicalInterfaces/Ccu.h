@@ -30,6 +30,8 @@
 #ifndef HOMEGEAR_CCU_CCU_H
 #define HOMEGEAR_CCU_CCU_H
 
+#include <cstdint>
+
 #include <homegear-base/Systems/IPhysicalInterface.h>
 #include <homegear-base/Encoding/XmlrpcDecoder.h>
 #include <homegear-base/Encoding/XmlrpcEncoder.h>

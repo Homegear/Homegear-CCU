@@ -30,6 +30,8 @@
 #ifndef MYPEER_H_
 #define MYPEER_H_
 
+#include <cstdint>
+
 #include "PhysicalInterfaces/Ccu.h"
 #include "MyPacket.h"
 #include <homegear-base/BaseLib.h>
