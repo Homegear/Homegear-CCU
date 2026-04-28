@@ -3,6 +3,8 @@
 #ifndef HOMEGEAR_MBUS_DESCRIPTIONCREATOR_H
 #define HOMEGEAR_MBUS_DESCRIPTIONCREATOR_H
 
+#include <cstdint>
+
 #include <homegear-base/BaseLib.h>
 #include "MyPacket.h"
 #include "PhysicalInterfaces/Ccu.h"

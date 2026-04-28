@@ -30,6 +30,8 @@
 #ifndef MYCENTRAL_H_
 #define MYCENTRAL_H_
 
+#include <cstdint>
+
 #include "MyPeer.h"
 #include "MyPacket.h"
 #include "DescriptionCreator.h"
